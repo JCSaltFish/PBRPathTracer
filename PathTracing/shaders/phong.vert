@@ -1,12 +1,16 @@
 #version 410
 
-layout (location = 0) in vec4 iPosition;
+out vec2 tex_coord;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 proj;
+const vec4 quad[4] = vec4[] (
+	vec4(-1.0, 1.0, 0.0, 1.0),
+	vec4(-1.0, -1.0, 0.0, 1.0),
+	vec4( 1.0, 1.0, 0.0, 1.0),
+	vec4( 1.0, -1.0, 0.0, 1.0)
+);
 
-void main()					
+void main()
 {
-	gl_Position = proj * view * model * iPosition; // standard vertex out          
+	gl_Position = quad[gl_VertexID];
+	tex_coord = 0.5 * (quad[gl_VertexID].xy + vec2(1.0));
 }

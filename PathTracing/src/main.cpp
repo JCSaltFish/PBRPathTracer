@@ -31,26 +31,22 @@
 GLuint shaderProgram;
 GLfloat ftime = 0.0f;
 
-GLint modelParameter; // modeling matrix
-GLint viewParameter; // viewing matrix
-GLint projParameter; // projection matrix
-
 GLFWwindow* window;
 // the main window size
 GLint wWindow = 800;
 GLint hWindow = 600;
 
-/*********************************
-Some OpenGL-related functions
-**********************************/
+GLuint quadVao = -1;
+GLuint frameTex = -1;
+GLubyte* texData = 0;
 
 // called when a window is reshaped
 void Reshape(GLFWwindow* window, int w, int h)
 {
 	glViewport(0, 0, w, h);
 	// remember the settings for the camera
-	wWindow = w;
-	hWindow = h;
+	//wWindow = w;
+	//hWindow = h;
 }
 
 void DrawGui()
@@ -63,42 +59,29 @@ void DrawGui()
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-// the main rendering function
-void RenderObjects()
-{
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-	glColor3f(0, 0, 0);
-	glPointSize(2);
-	glLineWidth(1);
-
-	// set the projection and view once for the scene
-	glm::mat4 view = glm::mat4(1.0);
-	glm::mat4 proj = glm::perspective(80.0f,// fovy
-		1.0f, // aspect
-		0.01f, 1000.f); // near, far
-	glUniformMatrix4fv(projParameter, 1, GL_FALSE, glm::value_ptr(proj));
-	view = glm::lookAt(glm::vec3(10.0f, 5.0f, 10.0f),// eye
-		glm::vec3(0.0f, 0.0f, 0.0f),  // destination
-		glm::vec3(0.0f, 1.0f, 0.0f)); // up
-
-	glUniformMatrix4fv(viewParameter, 1, GL_FALSE, glm::value_ptr(view));
-
-	DrawGui();
-}
-
 void Idle(void)
 {
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	ftime += 0.05;
 	glUseProgram(shaderProgram);
-	RenderObjects();
-	glfwSwapBuffers(window);
 }
 
 void Display(void)
 {
+	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(shaderProgram);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, frameTex);
+	int fbo_tex_loc = glGetUniformLocation(shaderProgram, "tex");
+	glUniform1i(fbo_tex_loc, 0);
+	glBindVertexArray(quadVao);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); // draw quad
 
+	DrawGui();
+
+	glfwSwapBuffers(window);
 }
 
 // keyboard callback
@@ -128,10 +111,6 @@ void InitializeProgram(GLuint* program)
 
 	// delete shaders (they are on the GPU now)
 	std::for_each(shaderList.begin(), shaderList.end(), glDeleteShader);
-
-	modelParameter = glGetUniformLocation(*program, "model");
-	viewParameter = glGetUniformLocation(*program, "view");
-	projParameter = glGetUniformLocation(*program, "proj");
 }
 
 int InitializeGL(GLFWwindow*& window)
@@ -154,6 +133,23 @@ int InitializeGL(GLFWwindow*& window)
 	return 0;
 }
 
+void InitializeFrame()
+{
+	glGenVertexArrays(1, &quadVao);
+
+	glGenTextures(1, &frameTex);
+	glBindTexture(GL_TEXTURE_2D, frameTex);
+	texData = new GLubyte[wWindow * hWindow * 3];
+	for (int i = 0; i < wWindow * hWindow * 3; i++)
+		texData[i] = 0;
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wWindow, hWindow, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 int main(int argc, char** argv)
 {
 	int initRes = InitializeGL(window);
@@ -164,6 +160,8 @@ int main(int argc, char** argv)
 	ImGui::CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 150");
+
+	InitializeFrame();
 
 	while (!glfwWindowShouldClose(window))
 	{

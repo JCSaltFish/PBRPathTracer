@@ -1,8 +1,11 @@
 #version 410
 
-layout (location = 0) out vec4 oColor;
+uniform sampler2D tex;
+
+in vec2 tex_coord;
+out vec4 fragcolor;
 
 void main()
 {
-	oColor = vec4(0., 0., 0., 1.);
+	fragcolor = texelFetch(tex, ivec2(gl_FragCoord), 0);
 }
