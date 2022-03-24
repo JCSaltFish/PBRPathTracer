@@ -12,8 +12,6 @@
 
 #include "shaders.h"
 
-using namespace std;
-
 void ShaderLog(GLint shader, GLenum eShaderType)
 {
 	GLint infoLogLength;
@@ -43,13 +41,12 @@ std::string FindFile(const std::string& strFilename)
 	if (testFile.is_open()) return strFilename;
 	else
 	{
-		cout << "Could not find the file " << strFilename << endl;
-		return string();
+		std::cout << "Could not find the file " << strFilename << std::endl;
+		return std::string();
 	}
 }
 
-
-string LoadShader(const std::string& strShaderFilename)
+std::string LoadShader(const std::string& strShaderFilename)
 {
 	std::string strFilename = FindFile(strShaderFilename);
 	std::ifstream shaderFile(strFilename.c_str());
@@ -79,7 +76,6 @@ GLuint CreateShader(GLenum eShaderType, const std::string& strShader)
 	}*/
 	return shader;
 }
-
 
 GLuint CreateProgram(const std::vector<GLuint>& shaderList)
 {

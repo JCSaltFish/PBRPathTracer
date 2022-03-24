@@ -15,24 +15,22 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <omp.h>
-//glm
+// glm
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/half_float.hpp>
-//imgui
+// imgui
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
 #include "shaders.h"
+#include "pathtracer.h"
 
-// shader program ID
 GLuint shaderProgram;
-GLfloat ftime = 0.0f;
 
 GLFWwindow* window;
-// the main window size
 GLint wWindow = 800;
 GLint hWindow = 600;
 
@@ -40,11 +38,12 @@ GLuint quadVao = -1;
 GLuint frameTex = -1;
 GLubyte* texData = 0;
 
-// called when a window is reshaped
+PathTracer pathTracer;
+bool shouldRedisplay = false;
+
 void Reshape(GLFWwindow* window, int w, int h)
 {
 	glViewport(0, 0, w, h);
-	// remember the settings for the camera
 	//wWindow = w;
 	//hWindow = h;
 }
@@ -55,19 +54,13 @@ void DrawGui()
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
+	// Draw GUI here
+
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-void Idle(void)
-{
-	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	ftime += 0.05;
-	glUseProgram(shaderProgram);
-}
-
-void Display(void)
+void Display()
 {
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -82,6 +75,18 @@ void Display(void)
 	DrawGui();
 
 	glfwSwapBuffers(window);
+}
+
+void Idle()
+{
+	if (shouldRedisplay)
+	{
+		glBindTexture(GL_TEXTURE_2D, frameTex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wWindow, hWindow, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		Display();
+		shouldRedisplay = false;
+	}
 }
 
 // keyboard callback
@@ -148,10 +153,37 @@ void InitializeFrame()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	pathTracer.SetOutImage(texData);
 }
 
-int main(int argc, char** argv)
+void InitializePathTracer()
 {
+	pathTracer.SetResolution(glm::ivec2(wWindow, hWindow));
+}
+
+void PTRenderLoop()
+{
+	while (!glfwWindowShouldClose(window))
+	{
+		pathTracer.RenderFrame();
+		shouldRedisplay = true;
+	}
+}
+
+void OnExit()
+{
+	if (texData)
+	{
+		delete texData;
+		texData = 0;
+	}
+}
+
+int main()
+{
+	InitializePathTracer();
+
 	int initRes = InitializeGL(window);
 	if (initRes)
 		return initRes;
@@ -163,10 +195,24 @@ int main(int argc, char** argv)
 
 	InitializeFrame();
 
+	omp_set_nested(1);
+	#pragma omp parallel sections num_threads(2)
+	{
+		#pragma omp section
+		while (!glfwWindowShouldClose(window))
+		{
+			Idle();
+			//Display();
+			glfwPollEvents();
+		}
+		#pragma omp section
+		PTRenderLoop();
+	}
+
 	while (!glfwWindowShouldClose(window))
 	{
 		Idle();
-		Display();
+		//Display();
 		glfwPollEvents();
 	}
 
@@ -175,5 +221,7 @@ int main(int argc, char** argv)
 	ImGui::DestroyContext();
 
 	glfwTerminate();
+
+	OnExit();
 	return 0;
 }

@@ -24,14 +24,22 @@
     <ClCompile Include="..\imgui-master\backends\imgui_impl_opengl3.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
+    <ClCompile Include="src\pathtracer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\phong.frag" />
-    <None Include="shaders\phong.vert" />
+    <None Include="shaders\phong.frag">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\phong.vert">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="imgui">
       <UniqueIdentifier>{660eaa1b-fcad-4a33-aa17-a3398135b99a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shaders">
+      <UniqueIdentifier>{ed67d5b8-c4d5-4413-887f-957a23c4a8d6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -62,5 +70,7 @@
     <ClInclude Include="..\imgui-master\backends\imgui_impl_opengl3_loader.h">
       <Filter>imgui</Filter>
     </ClInclude>
+    <ClInclude Include="src\shaders.h" />
+    <ClInclude Include="src\pathtracer.h" />
   </ItemGroup>
 </Project>

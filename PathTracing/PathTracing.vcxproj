@@ -19,6 +19,7 @@
     <ClCompile Include="..\imgui-master\imgui_tables.cpp" />
     <ClCompile Include="..\imgui-master\imgui_widgets.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\pathtracer.cpp" />
     <ClCompile Include="src\shaders.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -35,6 +36,8 @@
     <ClInclude Include="..\imgui-master\imstb_rectpack.h" />
     <ClInclude Include="..\imgui-master\imstb_textedit.h" />
     <ClInclude Include="..\imgui-master\imstb_truetype.h" />
+    <ClInclude Include="src\pathtracer.h" />
+    <ClInclude Include="src\shaders.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{E161AD21-A6AD-4FE3-90AA-CF6551D0D9A1}</ProjectGuid>
