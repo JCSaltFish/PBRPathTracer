@@ -72,5 +72,6 @@
     </ClInclude>
     <ClInclude Include="src\shaders.h" />
     <ClInclude Include="src\pathtracer.h" />
+    <ClInclude Include="src\OBJ_Loader.h" />
   </ItemGroup>
 </Project>

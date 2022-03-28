@@ -36,6 +36,7 @@
     <ClInclude Include="..\imgui-master\imstb_rectpack.h" />
     <ClInclude Include="..\imgui-master\imstb_textedit.h" />
     <ClInclude Include="..\imgui-master\imstb_truetype.h" />
+    <ClInclude Include="src\OBJ_Loader.h" />
     <ClInclude Include="src\pathtracer.h" />
     <ClInclude Include="src\shaders.h" />
   </ItemGroup>
