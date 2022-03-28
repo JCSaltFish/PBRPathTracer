@@ -107,8 +107,21 @@ void eval_combined_direct_BRDF(glm::vec3 point, glm::vec3 surface_normal, glm::v
     glm::vec3 view_dir = glm::normalize(camera_pos - point);
 
     for (int i = 0; i < NUM_LIGHT_SOURCE; i++) {
-        // precaculate lighting variables
+
         glm::vec3 light_dir = glm::normalize(light[i] - point);
+
+        // check direction
+        // Ignore V and L rays "below" the hemisphere
+        // TODO: speed up by precalculating the common dot product terms
+        float n_dot_l = glm::dot(normal, light_dir);
+        float n_dot_v = glm::dot(normal, view_dir);
+        bool v_back_facing = (n_dot_v <= 0.0f);
+        bool l_back_facing = (n_dot_l <= 0.0f);
+        if (v_back_facing || l_back_facing) {
+            continue;
+        }
+
+        // precaculate lighting variables
         glm::vec3 half = glm::normalize(view_dir + light_dir);
         float distance = glm::length(light[i] - point);
         float attenuation = 1.0 / (distance * distance);
