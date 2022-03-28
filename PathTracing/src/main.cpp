@@ -160,6 +160,10 @@ void InitializeFrame()
 void InitializePathTracer()
 {
 	pathTracer.SetResolution(glm::ivec2(wWindow, hWindow));
+	
+	pathTracer.SetCamera(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	
+	pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f));
 }
 
 void PTRenderLoop()
@@ -207,13 +211,6 @@ int main()
 		}
 		#pragma omp section
 		PTRenderLoop();
-	}
-
-	while (!glfwWindowShouldClose(window))
-	{
-		Idle();
-		//Display();
-		glfwPollEvents();
 	}
 
 	ImGui_ImplOpenGL3_Shutdown();

@@ -1,0 +1,1 @@
+Rename .obj model file name to .object to avoid .gitignore filtering.
