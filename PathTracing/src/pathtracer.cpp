@@ -21,11 +21,19 @@ PathTracer::~PathTracer()
 
 }
 
-void PathTracer::LoadMesh(std::string file, glm::mat4 model)
+void PathTracer::LoadMesh(std::string file, glm::mat4 model, glm::vec3 base_color, float metalness, float roughness)
 {
 	objl::Loader loader;
 	if (loader.LoadFile(file))
 	{
+        // create mesh and material per mesh
+        Mesh mesh;
+        Material material;
+        material.base_color = base_color;
+        material.metalness = metalness;
+        material.roughness = roughness;
+        mesh.material = material;
+
 		for (int i = 0; i < loader.LoadedIndices.size(); i += 3)
 		{
 			MeshTriangle t;
@@ -46,12 +54,13 @@ void PathTracer::LoadMesh(std::string file, glm::mat4 model)
 			t.v3 = glm::vec3(model * glm::vec4(t.v3, 1.0f));
 			
 			// normal
-			glm::vec3 e1 = t.v2 - t.v1;
-			glm::vec3 e2 = t.v3 - t.v2;
+			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
+			glm::vec3 e2 = glm::normalize(t.v3 - t.v1);
 			t.normal = glm::normalize(glm::cross(e1, e2));
 
-			m_scene.push_back(t);
+            mesh.triangles.push_back(t);
 		}
+        scene_mesh.push_back(mesh);
 	}
 }
 
@@ -89,7 +98,7 @@ void PathTracer::SetProjection(float f, float fovy)
 		m_camFovy = 179.5;
 }
 
-bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut)
+bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut, glm::vec3& p)
 {
 	bool res = false;
 	if (glm::dot(rd, t.normal) == 0.0f)
@@ -97,39 +106,61 @@ bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& di
 	distOut = glm::dot((t.v1 - ro), t.normal) / glm::dot(rd, t.normal);
 	if (distOut < 0)
 		return res;
-	glm::vec3 p = ro + rd * distOut;
-
+    // update intersection point
+    p = ro + rd * distOut;
+    
 	// If the sum of all the angles is approximately equal to 360 degrees
 	// then the intersection is in the triangle.
 	float r = glm::acos(glm::dot(glm::normalize(t.v1 - p), glm::normalize(t.v2 - p)));
 	r += glm::acos(glm::dot(glm::normalize(t.v2 - p), glm::normalize(t.v3 - p)));
 	r += glm::acos(glm::dot(glm::normalize(t.v3 - p), glm::normalize(t.v1 - p)));
-	if (abs(r - 2.0f * (float)M_PI) < EPS)
-		res = true;
+    if (abs(r - 2.0f * (float)M_PI) < EPS) {
+        res = true;
+    }
 
 	return res;
+}
+
+void PathTracer::AddLight(glm::vec3 position, glm::vec3 color) {
+    Light light;
+    light.color = color;
+    light.position = position;
+
+    scene_lights.push_back(light);
 }
 
 glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd)
 {
 	float dist = INF;
 	int index = -1;
-	for (int i = 0; i < m_scene.size(); i++)
+    Intersect_data intersect_d;
+	for (int i = 0; i < scene_mesh.size(); i++)
 	{
-		float d = 0.0f;
-		if (Intersect(ro, rd, m_scene[i], d))
-		{
-			if (d < dist)
-			{
-				dist = d;
-				index = i;
-			}
-		}
+        std::vector<MeshTriangle> triangles = scene_mesh[i].triangles;
+		
+        for (int t = 0; t < triangles.size(); t++) {
+            float d = 0.0f;
+            glm::vec3 point;
+            if (Intersect(ro, rd, triangles[t], d, point))
+            {
+                if (d < dist)
+                {
+                    // closest to viewer (to render)
+                    dist = d;
+                    index = i;
+                    intersect_d.surf_normal = triangles[t].normal;
+                    intersect_d.point = point;
+                    intersect_d.material = scene_mesh[i].material;
+                }
+            }
+        }
+		
 	}
 
 	if (index != -1)
 	{
-		return glm::vec3(1.0f);
+        // TODO: per surface or per vertex lighting? 
+        return eval_combined_direct_BRDF(intersect_d.point, intersect_d.surf_normal, m_camDir, intersect_d.material, scene_lights);
 	}
 
 	return glm::vec3(0.0f);
@@ -157,6 +188,7 @@ void PathTracer::RenderFrame()
 		numThreads -= 2;
 	else if (numThreads > 0)
 		numThreads--;
+
 	#pragma omp parallel for num_threads(numThreads)
 	for (int i = 0; i < m_imgResolution.y; i++)
 	{

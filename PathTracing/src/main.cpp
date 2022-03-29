@@ -163,7 +163,8 @@ void InitializePathTracer()
 	
 	pathTracer.SetCamera(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	
-	pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f));
+	pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f), 0.5f, 0.5f);
+    pathTracer.AddLight(glm::vec3(0.0f, 4.0f, -6.0f), glm::vec3(1.0f));
 }
 
 void PTRenderLoop()
