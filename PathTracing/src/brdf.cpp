@@ -128,14 +128,14 @@ glm::vec3 eval_combined_direct_BRDF(const glm::vec3 point, const glm::vec3 surfa
 
     }
 
-    glm::vec3 ambient = glm::vec3(0.03) * material.base_color;
+    glm::vec3 ambient = glm::vec3(0.1) * material.base_color;
     //*material.ao;
     // why is it very dark > need to add * 30.0f
-    glm::vec3 color = ambient + out_radiance * 30.0f;
+    glm::vec3 color = ambient + out_radiance * 80.f;
 
     // GAMMA CORRECTION? 
-    // color = color / (color + glm::vec3(1.0));
-    // color = pow(color, glm::vec3(1.0 / 2.2));
+    //color = color / (color + glm::vec3(1.0f));
+    //color = glm::pow(color, glm::vec3(1.0f / 2.2f));
 
     //std::cout << "out_radiance: " << out_radiance.x << " " << out_radiance.y << " " << out_radiance.z << std::endl;
 
