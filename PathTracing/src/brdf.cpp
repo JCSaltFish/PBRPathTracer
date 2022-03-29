@@ -125,13 +125,13 @@ glm::vec3 eval_combined_direct_BRDF(const glm::vec3 point, const glm::vec3 surfa
 
         // includes diffuse 
         out_radiance += (refraction * material.base_color / float(M_PI) + specular) * radiance * n_dot_l;
-
+        // TODO: use snell's law (schlick's approximation) to get the refracted ray
     }
 
-    glm::vec3 ambient = glm::vec3(0.1) * material.base_color;
+    glm::vec3 ambient = glm::vec3(0.03) * material.base_color;
     //*material.ao;
     // why is it very dark > need to add * 30.0f
-    glm::vec3 color = ambient + out_radiance * 80.f;
+    glm::vec3 color = ambient + out_radiance * 50.0f;
 
     // GAMMA CORRECTION? 
     //color = color / (color + glm::vec3(1.0f));

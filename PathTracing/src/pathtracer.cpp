@@ -160,7 +160,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd)
 	if (index != -1)
 	{
         // TODO: per surface or per vertex lighting? 
-        return eval_combined_direct_BRDF(intersect_d.point, intersect_d.surf_normal, m_camDir, intersect_d.material, scene_lights);
+        return eval_combined_direct_BRDF(intersect_d.point, intersect_d.surf_normal, m_camPos, intersect_d.material, scene_lights);
 	}
 
 	return glm::vec3(0.0f);
