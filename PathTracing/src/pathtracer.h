@@ -25,17 +25,10 @@ struct Mesh
     std::vector<MeshTriangle> triangles;
 };
 
-struct Intersect_data {
-    glm::vec3 point;
-    glm::vec3 surf_normal;
-    Material material;
-};
-
 class PathTracer
 {
 private:
     std::vector<Mesh> scene_mesh;
-	std::vector<MeshTriangle> m_scene; // TODO REMOVE
     std::vector<Light> scene_lights; // or store lights in list
 
 	glm::ivec2 m_imgResolution;

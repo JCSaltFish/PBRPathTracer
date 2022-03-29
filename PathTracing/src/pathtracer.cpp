@@ -159,8 +159,39 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd)
 
 	if (index != -1)
 	{
+        glm::vec3 view_dir = glm::normalize(m_camPos - intersect_d.point);
+
         // TODO: per surface or per vertex lighting? 
-        return eval_combined_direct_BRDF(intersect_d.point, intersect_d.surf_normal, m_camPos, intersect_d.material, scene_lights);
+        // loop through lights in scene 
+        glm::vec3 out_radiance = glm::vec3(0.0);
+        for (int l = 0; l < scene_lights.size(); l++) {
+            // if ray hits lights 
+            glm::vec3 light_dir = glm::normalize(scene_lights[l].position - intersect_d.point);
+            
+            if (on_hemisphere(intersect_d, light_dir, view_dir)) {
+
+                float distance = glm::length(scene_lights[l].position - intersect_d.point);
+                float attenuation = 1.0f / (distance * distance);
+                glm::vec3 radiance = scene_lights[l].color * attenuation;
+                float n_dot_l = std::max(glm::dot(intersect_d.surf_normal, light_dir), FLT_EPSILON);
+
+                // cook_torrance specular
+                // From this ratio of reflection and the energy conservation principle we can directly obtain the refracted portion of light. , refracted = 1-f
+                glm::vec3 specular = eval_direct_BRDF(intersect_d, light_dir, view_dir); 
+                glm::vec3 refraction = glm::vec3(1.0f) - specular;
+
+                // if we have metallic: 
+                refraction *= 1.0 - intersect_d.material.metalness;
+
+                // BRDF is integration over hemisphere (this includes diffuse)
+                out_radiance += (refraction * intersect_d.material.base_color / float(M_PI) + specular) * radiance * n_dot_l;
+                // somehow needs to do: sum += eval_direct_BRDF(intersect_d, light_dir, view_dir) * L(P, Wi) * dot(N, Wi) * dW;
+            }
+            
+        }
+
+        // TODO: remove 5.0f this is to just make it more visible with less lights
+        return out_radiance * 10.0f;
 	}
 
 	return glm::vec3(0.0f);

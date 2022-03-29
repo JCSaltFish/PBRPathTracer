@@ -70,76 +70,45 @@ glm::vec3 eval_cook_torrance_specular_brdf(float d, float g, glm::vec3 f, glm::v
 
 }
 
+bool on_hemisphere(const Intersect_data& int_data, const glm::vec3 incoming, const glm::vec3 outgoing) {
+    // use this function to see if should calculate BRDF (if on the right side of the hemisphere)
 
-// pass in position to calculate for 
-glm::vec3 eval_combined_direct_BRDF(const glm::vec3 point, const glm::vec3 surface_normal, const glm::vec3 camera_pos, const Material material, const std::vector<Light> &light_list) {
-    // loop over each light source, calculate individual radian and sum its contribution scaled y the BRDF and the light's incident angle 
-    // solving the integral over angles for direct light sources
-    glm::vec3 out_radiance = glm::vec3(0.0);
+    float n_dot_l = std::max(glm::dot(int_data.surf_normal, incoming), FLT_EPSILON);
+    float n_dot_v = std::max(glm::dot(int_data.surf_normal, outgoing), FLT_EPSILON);
 
-    // TODO: MAYBE MOVE THESE OUT BEcAUSE THE INDIRECT ALSO NEEDS THEM 
-    glm::vec3 normal = glm::normalize(surface_normal);
-    glm::vec3 view_dir = glm::normalize(camera_pos - point);
+    bool v_back_facing = (n_dot_v <= 0.0f);
+    bool l_back_facing = (n_dot_l <= 0.0f);
+    return !(v_back_facing || l_back_facing);
+}
 
-    for (int i = 0; i < light_list.size(); i++) {
+// incoming_dir and out_dir sampled from hemisphere
+// incoming_dir is initially from light because we want to know how much light is reflected on point, out is view direction  
+glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incoming, const glm::vec3 outgoing) {
+    glm::vec3 incoming_dir = glm::normalize(incoming);
+    glm::vec3 out_dir = glm::normalize(outgoing);
+    
+    // point to light direction
+    glm::vec3 light_dir = -incoming_dir;
 
-        glm::vec3 light_dir = glm::normalize(light_list[i].position - point);
-        // check direction
-        // Ignore V and L rays "below" the hemisphere
-        // TODO: speed up by precalculating the common dot product terms
-        float n_dot_l = std::max(glm::dot(normal, light_dir), FLT_EPSILON);
-        float n_dot_v = std::max(glm::dot(normal, view_dir), FLT_EPSILON);
-        bool v_back_facing = (n_dot_v <= 0.0f);
-        bool l_back_facing = (n_dot_l <= 0.0f);
-        if (v_back_facing || l_back_facing) {
-            continue;
-        }
+    // get cook-torrance specular term for each light
 
-        // precaculate lighting variables
-        glm::vec3 half = glm::normalize(view_dir + light_dir);
-        float distance = glm::length(light_list[i].position - point);
-        float attenuation = 1.0f / (distance * distance);
-        glm::vec3 radiance = light_list[i].color * attenuation;
+    // lighting variables
+    glm::vec3 half = glm::normalize(light_dir + out_dir);
 
-        // get cook-torrance specular term for each light
+    // fresnel
+    // F0 surface reflection at zero incidence or how much the surface reflects if looking directly at the surface
+    glm::vec3 f0 = base_color_to_specular(int_data.material.base_color, int_data.material.metalness);
+    glm::vec3 f_term = fresnel_schlick(half, light_dir, f0);
 
-        // fresnel
-        // F0 surface reflection at zero incidence or how much the surface reflects if looking directly at the surface
-        glm::vec3 f0 = base_color_to_specular(material.base_color, material.metalness);
-        glm::vec3 f_term = fresnel_schlick(half, view_dir, f0);
+    // D normal distribution term
+    float d_term = GGX_distribution(int_data.material.roughness, int_data.surf_normal, half);
 
-        // D normal distribution term
-        float d_term = GGX_distribution(material.roughness, normal, half);
+    // G geometry attenuation term
+    float g_term = geometry_smith(int_data.surf_normal, out_dir, light_dir, int_data.material.roughness);
 
-        // G geometry attenuation term
-        float g_term = geometry_smith(normal, view_dir, light_dir, material.roughness);
+    // cooktorrance specular BRDF
+    return eval_cook_torrance_specular_brdf(d_term, g_term, f_term, int_data.surf_normal, out_dir, light_dir);
 
-        // cooktorrance specular BRDF
-        glm::vec3 specular = eval_cook_torrance_specular_brdf(d_term, g_term, f_term, normal, view_dir, light_dir);
-
-        // From this ratio of reflection and the energy conservation principle we can directly obtain the refracted portion of light. , refracted = 1-f
-        glm::vec3 refraction = glm::vec3(1.0f) - specular;
-
-        // if we have metallic: 
-        refraction *= 1.0 - material.metalness;
-
-        // includes diffuse 
-        out_radiance += (refraction * material.base_color / float(M_PI) + specular) * radiance * n_dot_l;
-        // TODO: use snell's law (schlick's approximation) to get the refracted ray
-    }
-
-    glm::vec3 ambient = glm::vec3(0.03) * material.base_color;
-    //*material.ao;
-    // why is it very dark > need to add * 30.0f
-    glm::vec3 color = ambient + out_radiance * 50.0f;
-
-    // GAMMA CORRECTION? 
-    //color = color / (color + glm::vec3(1.0f));
-    //color = glm::pow(color, glm::vec3(1.0f / 2.2f));
-
-    //std::cout << "out_radiance: " << out_radiance.x << " " << out_radiance.y << " " << out_radiance.z << std::endl;
-
-    return color;
 }
 
 // indirect lighitng will be from cube map if any

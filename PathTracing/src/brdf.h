@@ -37,10 +37,17 @@ struct Light {
     glm::vec3 position;
 };
 
+struct Intersect_data {
+    glm::vec3 point;
+    glm::vec3 surf_normal; //normalized
+    Material material;
+};
+
+
 const float MIN_DIELECTRICS_F0 = 0.04f; // base reflectivity (F0) - index of refraction
 
-
-glm::vec3 eval_combined_direct_BRDF(const glm::vec3 point, const glm::vec3 surface_normal, const glm::vec3 camera_pos, const Material material, const std::vector<Light>& light_list);
+bool on_hemisphere(const Intersect_data& int_data, const glm::vec3 incoming, const glm::vec3 outgoing);
+glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incoming_dir, const glm::vec3 out_dir);
 
 
 #endif
