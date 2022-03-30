@@ -19,10 +19,19 @@ struct MeshTriangle
 	glm::vec3 normal;
 };
 
+struct AABB
+{
+	glm::vec3 min = glm::vec3(INF);
+	glm::vec3 max = glm::vec3(-INF);
+
+	bool Intersect(glm::vec3 ro, glm::vec3 rd);
+};
+
 struct Mesh
 {
     Material material;
     std::vector<MeshTriangle> triangles;
+	AABB aabb;
 };
 
 class PathTracer
@@ -47,6 +56,8 @@ public:
 	~PathTracer();
 
 private:
+	void BuildAABB(glm::vec3 v, AABB& aabb);
+
 	bool Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut);
 	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int depth = 0);
 

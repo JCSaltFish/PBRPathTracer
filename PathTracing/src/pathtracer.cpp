@@ -5,6 +5,19 @@
 #include "pathtracer.h"
 #include "OBJ_Loader.h"
 
+bool AABB::Intersect(glm::vec3 ro, glm::vec3 rd)
+{
+	glm::vec3 tMin = (min - ro) / rd;
+	glm::vec3 tMax = (max - ro) / rd;
+	glm::vec3 t1 = glm::min(tMin, tMax);
+	glm::vec3 t2 = glm::max(tMin, tMax);
+	float tNear = glm::max(glm::max(t1.x, t1.y), t1.z);
+	float tFar = glm::min(glm::min(t2.x, t2.y), t2.z);
+	if (tNear > tFar)
+		return false;
+	return true;
+}
+
 PathTracer::PathTracer()
 {
 	m_imgResolution = glm::ivec2(0);
@@ -21,6 +34,32 @@ PathTracer::PathTracer()
 PathTracer::~PathTracer()
 {
 
+}
+
+void PathTracer::BuildAABB(glm::vec3 v, AABB& aabb)
+{
+	float minX = aabb.min.x;
+	float minY = aabb.min.y;
+	float minZ = aabb.min.z;
+	float maxX = aabb.max.x;
+	float maxY = aabb.max.y;
+	float maxZ = aabb.max.z;
+
+	if (v.x < minX)
+		minX = v.x;
+	if (v.y < minY)
+		minY = v.y;
+	if (v.z < minZ)
+		minZ = v.z;
+	if (v.x > maxX)
+		maxX = v.x;
+	if (v.y > maxY)
+		maxY = v.y;
+	if (v.z > maxZ)
+		maxZ = v.z;
+
+	aabb.min = glm::vec3(minX, minY, minZ);
+	aabb.max = glm::vec3(maxX, maxY, maxZ);
 }
 
 int PathTracer::LoadMesh(std::string file, glm::mat4 model, bool ccw)
@@ -40,16 +79,21 @@ int PathTracer::LoadMesh(std::string file, glm::mat4 model, bool ccw)
 				loader.LoadedVertices[index].Position.Y,
 				loader.LoadedVertices[index].Position.Z);
 			t.v1 = glm::vec3(model * glm::vec4(t.v1, 1.0f));
+			BuildAABB(t.v1, mesh.aabb);
+
 			index = loader.LoadedIndices[i + 1];
 			t.v2 = glm::vec3(loader.LoadedVertices[index].Position.X,
 				loader.LoadedVertices[index].Position.Y,
 				loader.LoadedVertices[index].Position.Z);
 			t.v2 = glm::vec3(model * glm::vec4(t.v2, 1.0f));
+			BuildAABB(t.v2, mesh.aabb);
+
 			index = loader.LoadedIndices[i + 2];
 			t.v3 = glm::vec3(loader.LoadedVertices[index].Position.X,
 				loader.LoadedVertices[index].Position.Y,
 				loader.LoadedVertices[index].Position.Z);
 			t.v3 = glm::vec3(model * glm::vec4(t.v3, 1.0f));
+			BuildAABB(t.v3, mesh.aabb);
 			
 			// normal
 			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
@@ -62,6 +106,8 @@ int PathTracer::LoadMesh(std::string file, glm::mat4 model, bool ccw)
 		}
 		id = scene_mesh.size();
         scene_mesh.push_back(mesh);
+		std::cout << mesh.aabb.min.x << "," << mesh.aabb.min.y << "," << mesh.aabb.min.z << std::endl;
+		std::cout << mesh.aabb.max.x << "," << mesh.aabb.max.y << "," << mesh.aabb.max.z << std::endl;
 	}
 
 	return id;
@@ -144,6 +190,9 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
 	int tid = -1;
 	for (int i = 0; i < scene_mesh.size(); i++)
 	{
+		if (!scene_mesh[i].aabb.Intersect(ro, rd))
+			continue;
+
         std::vector<MeshTriangle> triangles = scene_mesh[i].triangles;
 		
         for (int t = 0; t < triangles.size(); t++) {
@@ -177,7 +226,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
 			depth++;
 			glm::vec3 reflectDir = glm::normalize(glm::vec3(3.0f, 6.0f, -1.0f) - intersect_d.point);
 			return Trace(intersect_d.point, reflectDir, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * 5.0f;
-			//return intersect_d.surf_normal;
+			//return glm::vec3(1.0f);
 		}
 
 		if (depth >= 1)
