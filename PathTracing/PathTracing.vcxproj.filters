@@ -25,6 +25,7 @@
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="src\pathtracer.cpp" />
+    <ClCompile Include="src\brdf.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\phong.frag">

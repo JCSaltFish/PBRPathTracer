@@ -14,6 +14,8 @@ PathTracer::PathTracer()
 	m_camUp = glm::vec3(0.0f, 1.0f, 0.0f);
 	m_camFocal = 0.1f;
 	m_camFovy = 90;
+
+	samples = 0;
 }
 
 PathTracer::~PathTracer()
@@ -21,18 +23,14 @@ PathTracer::~PathTracer()
 
 }
 
-void PathTracer::LoadMesh(std::string file, glm::mat4 model, glm::vec3 base_color, float metalness, float roughness)
+int PathTracer::LoadMesh(std::string file, glm::mat4 model)
 {
+	int id = -1;
+
 	objl::Loader loader;
 	if (loader.LoadFile(file))
 	{
-        // create mesh and material per mesh
         Mesh mesh;
-        Material material;
-        material.base_color = base_color;
-        material.metalness = metalness;
-        material.roughness = roughness;
-        mesh.material = material;
 
 		for (int i = 0; i < loader.LoadedIndices.size(); i += 3)
 		{
@@ -56,12 +54,21 @@ void PathTracer::LoadMesh(std::string file, glm::mat4 model, glm::vec3 base_colo
 			// normal
 			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
 			glm::vec3 e2 = glm::normalize(t.v3 - t.v1);
-			t.normal = glm::normalize(glm::cross(e1, e2));
+			t.normal = -glm::normalize(glm::cross(e1, e2));
 
             mesh.triangles.push_back(t);
 		}
+		id = scene_mesh.size();
         scene_mesh.push_back(mesh);
 	}
+
+	return id;
+}
+
+void PathTracer::SetMeshMaterial(int id, Material m)
+{
+	if (id >= 0 && id < scene_mesh.size())
+		scene_mesh[id].material = m;
 }
 
 void PathTracer::SetOutImage(GLubyte* out)
@@ -98,7 +105,7 @@ void PathTracer::SetProjection(float f, float fovy)
 		m_camFovy = 179.5;
 }
 
-bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut, glm::vec3& p)
+bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut)
 {
 	bool res = false;
 	if (glm::dot(rd, t.normal) == 0.0f)
@@ -107,16 +114,15 @@ bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& di
 	if (distOut < 0)
 		return res;
     // update intersection point
-    p = ro + rd * distOut;
+	glm::vec3 p = ro + rd * distOut;
     
 	// If the sum of all the angles is approximately equal to 360 degrees
 	// then the intersection is in the triangle.
 	float r = glm::acos(glm::dot(glm::normalize(t.v1 - p), glm::normalize(t.v2 - p)));
 	r += glm::acos(glm::dot(glm::normalize(t.v2 - p), glm::normalize(t.v3 - p)));
 	r += glm::acos(glm::dot(glm::normalize(t.v3 - p), glm::normalize(t.v1 - p)));
-    if (abs(r - 2.0f * (float)M_PI) < EPS) {
+    if (abs(r - 2.0f * (float)M_PI) < EPS)
         res = true;
-    }
 
 	return res;
 }
@@ -129,69 +135,85 @@ void PathTracer::AddLight(glm::vec3 position, glm::vec3 color) {
     scene_lights.push_back(light);
 }
 
-glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd)
+glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
 {
 	float dist = INF;
-	int index = -1;
-    Intersect_data intersect_d;
+	int mid = -1;
+	int tid = -1;
 	for (int i = 0; i < scene_mesh.size(); i++)
 	{
         std::vector<MeshTriangle> triangles = scene_mesh[i].triangles;
 		
         for (int t = 0; t < triangles.size(); t++) {
             float d = 0.0f;
-            glm::vec3 point;
-            if (Intersect(ro, rd, triangles[t], d, point))
+            if (Intersect(ro, rd, triangles[t], d))
             {
                 if (d < dist)
                 {
                     // closest to viewer (to render)
                     dist = d;
-                    index = i;
-                    intersect_d.surf_normal = triangles[t].normal;
-                    intersect_d.point = point;
-                    intersect_d.material = scene_mesh[i].material;
+                    tid = t;
+					mid = i;
                 }
             }
         }
-		
 	}
 
-	if (index != -1)
+	if (tid != -1 && mid != -1)
 	{
-        glm::vec3 view_dir = glm::normalize(m_camPos - intersect_d.point);
+		Intersect_data intersect_d;
+		intersect_d.surf_normal = scene_mesh[mid].triangles[tid].normal;
+		intersect_d.point = ro + rd * (dist - EPS);
+		intersect_d.material = scene_mesh[mid].material;
 
-        // TODO: per surface or per vertex lighting? 
-        // loop through lights in scene 
-        glm::vec3 out_radiance = glm::vec3(0.0);
-        for (int l = 0; l < scene_lights.size(); l++) {
-            // if ray hits lights 
-            glm::vec3 light_dir = glm::normalize(scene_lights[l].position - intersect_d.point);
-            
-            if (on_hemisphere(intersect_d, light_dir, view_dir)) {
+		if (glm::length(intersect_d.material.emissive) != 0.0f)
+			return intersect_d.material.emissive;
 
-                float distance = glm::length(scene_lights[l].position - intersect_d.point);
-                float attenuation = 1.0f / (distance * distance);
-                glm::vec3 radiance = scene_lights[l].color * attenuation;
-                float n_dot_l = std::max(glm::dot(intersect_d.surf_normal, light_dir), FLT_EPSILON);
+		if (depth < 2)
+		{
+			depth++;
+			glm::vec3 reflectDir = glm::normalize(glm::vec3(3.0f, 6.0f, 1.0f) - intersect_d.point);
+			return intersect_d.material.base_color;
+		}
 
-                // cook_torrance specular
-                // From this ratio of reflection and the energy conservation principle we can directly obtain the refracted portion of light. , refracted = 1-f
-                glm::vec3 specular = eval_direct_BRDF(intersect_d, light_dir, view_dir); 
-                glm::vec3 refraction = glm::vec3(1.0f) - specular;
+		if (depth >= 2)
+			return glm::vec3(0.0);
 
-                // if we have metallic: 
-                refraction *= 1.0 - intersect_d.material.metalness;
+		//glm::vec3 radiance = eval_direct_BRDF(intersect_d, reflectDir, rd);
 
-                // BRDF is integration over hemisphere (this includes diffuse)
-                out_radiance += (refraction * intersect_d.material.base_color / float(M_PI) + specular) * radiance * n_dot_l;
-                // somehow needs to do: sum += eval_direct_BRDF(intersect_d, light_dir, view_dir) * L(P, Wi) * dot(N, Wi) * dW;
-            }
-            
-        }
+        //glm::vec3 view_dir = glm::normalize(m_camPos - intersect_d.point);
 
-        // TODO: remove 5.0f this is to just make it more visible with less lights
-        return out_radiance * 10.0f;
+        //// TODO: per surface or per vertex lighting? 
+        //// loop through lights in scene 
+        //glm::vec3 out_radiance = glm::vec3(0.0);
+        //for (int l = 0; l < scene_lights.size(); l++) {
+        //    // if ray hits lights 
+        //    glm::vec3 light_dir = glm::normalize(scene_lights[l].position - intersect_d.point);
+        //    
+        //    if (on_hemisphere(intersect_d, light_dir, view_dir)) {
+
+        //        float distance = glm::length(scene_lights[l].position - intersect_d.point);
+        //        float attenuation = 1.0f / (distance * distance);
+        //        glm::vec3 radiance = scene_lights[l].color * attenuation;
+        //        float n_dot_l = std::max(glm::dot(intersect_d.surf_normal, light_dir), FLT_EPSILON);
+
+        //        // cook_torrance specular
+        //        // From this ratio of reflection and the energy conservation principle we can directly obtain the refracted portion of light. , refracted = 1-f
+        //        glm::vec3 specular = eval_direct_BRDF(intersect_d, light_dir, view_dir); 
+        //        glm::vec3 refraction = glm::vec3(1.0f) - specular;
+
+        //        // if we have metallic: 
+        //        refraction *= 1.0 - intersect_d.material.metalness;
+
+        //        // BRDF is integration over hemisphere (this includes diffuse)
+        //        out_radiance += (refraction * intersect_d.material.base_color / float(M_PI) + specular) * radiance * n_dot_l;
+        //        // somehow needs to do: sum += eval_direct_BRDF(intersect_d, light_dir, view_dir) * L(P, Wi) * dot(N, Wi) * dW;
+        //    }
+        //    
+        //}
+
+        //// TODO: remove 5.0f this is to just make it more visible with less lights
+        //return out_radiance * 20.0f;
 	}
 
 	return glm::vec3(0.0f);
@@ -199,6 +221,9 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd)
 
 void PathTracer::RenderFrame()
 {
+	if (samples < 255)
+		samples++;
+
 	// Position world space image plane
 	glm::vec3 imgCenter = m_camPos + m_camDir * m_camFocal;
 	float imgHeight = 2.0f * m_camFocal * tan((m_camFovy / 2.0f) * M_PI / 180.0f);
@@ -211,7 +236,7 @@ void PathTracer::RenderFrame()
 	// Starting at top left
 	glm::vec3 topLeft = imgCenter - camRight * (imgWidth * 0.5f);
 	topLeft += m_camUp * (imgHeight * 0.5f);
-	// Loop through each pixel
+
 	int numThreads = omp_get_max_threads();
 	if (numThreads > 2)
 		numThreads -= 3;
@@ -219,7 +244,7 @@ void PathTracer::RenderFrame()
 		numThreads -= 2;
 	else if (numThreads > 0)
 		numThreads--;
-
+	// Loop through each pixel
 	#pragma omp parallel for num_threads(numThreads)
 	for (int i = 0; i < m_imgResolution.y; i++)
 	{
@@ -227,12 +252,18 @@ void PathTracer::RenderFrame()
 		for (int j = 0; j < m_imgResolution.x; j++)
 		{
 			glm::vec3 rayDir = glm::normalize(pixel - m_camPos);
-			// TODO Trace & draw here
 			glm::vec3 color = Trace(m_camPos, rayDir);
 			// Draw
-			m_outImg[((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3] = color.r * 255;
-			m_outImg[((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3 + 1] = color.g * 255;
-			m_outImg[((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3 + 2] = color.b * 255;
+			int imgPixel = ((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3;
+			if (samples == 1)
+			{
+				m_outImg[imgPixel] = 0;
+				m_outImg[imgPixel + 1] = 0;
+				m_outImg[imgPixel + 2] = 0;
+			}
+			m_outImg[imgPixel] = (color.r * 255 + m_outImg[imgPixel] * (samples - 1)) / samples;
+			m_outImg[imgPixel + 1] = (color.g * 255 + m_outImg[imgPixel + 1] * (samples - 1)) / samples;
+			m_outImg[imgPixel + 2] = (color.b * 255 + m_outImg[imgPixel + 2] * (samples - 1)) / samples;
 
 			pixel += camRight * deltaX;
 		}

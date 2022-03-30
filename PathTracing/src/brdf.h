@@ -27,8 +27,8 @@ struct Material {
     float metalness;
     float roughness;
 
-   /* glm::vec3 emissive;
-    float transmissivness;
+   glm::vec3 emissive;
+   /* float transmissivness;
     float opacity;*/
 };
 

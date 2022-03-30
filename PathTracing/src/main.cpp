@@ -62,6 +62,8 @@ void DrawGui()
 
 void Display()
 {
+	std::cout << "new frame" << std::endl;
+
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glUseProgram(shaderProgram);
@@ -163,9 +165,24 @@ void InitializePathTracer()
 	
 	pathTracer.SetCamera(glm::vec3(0.0f, 0.0f, -9.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	
-	pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f, 1.0f);
-    pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, -3.0f, 0.0f)), glm::vec3(1.0f, 1.0f, 0.0f), 1.0f, 0.5f);
-    pathTracer.AddLight(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f));
+	int id = pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f));
+	Material m;
+	m.base_color = glm::vec3(1.0f, 0.0f, 0.0f);
+	m.metalness = 1.0f;
+	m.roughness = 1.0f;
+	pathTracer.SetMeshMaterial(id, m);
+
+    id = pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, -3.0f, 0.0f)));
+	m.base_color = glm::vec3(1.0f, 1.0f, 0.0f);
+	m.metalness = 1.0f;
+	m.roughness = 0.5f;
+	pathTracer.SetMeshMaterial(id, m);
+
+	id = pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 6.0f, 1.0f)), glm::vec3(0.5f)));
+	m.emissive = glm::vec3(1.0);
+	pathTracer.SetMeshMaterial(id, m);
+
+	//pathTracer.AddLight(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f));
 }
 
 void PTRenderLoop()

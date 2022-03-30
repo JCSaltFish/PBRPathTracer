@@ -18,6 +18,7 @@
     <ClCompile Include="..\imgui-master\imgui_draw.cpp" />
     <ClCompile Include="..\imgui-master\imgui_tables.cpp" />
     <ClCompile Include="..\imgui-master\imgui_widgets.cpp" />
+    <ClCompile Include="src\brdf.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\pathtracer.cpp" />
     <ClCompile Include="src\shaders.cpp" />
