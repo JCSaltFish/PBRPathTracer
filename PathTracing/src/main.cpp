@@ -62,7 +62,7 @@ void DrawGui()
 
 void Display()
 {
-	std::cout << "new frame" << std::endl;
+	std::cout << "samples: " << pathTracer.GetSamples() << std::endl;
 
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -179,7 +179,7 @@ void InitializePathTracer()
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Light
-	id = pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 6.0f, -1.0f)), glm::vec3(0.5f)));
+	id = pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, 3.0f, 0.0f)), true);
 	m.emissive = glm::vec3(1.0);
 	pathTracer.SetMeshMaterial(id, m);
 

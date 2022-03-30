@@ -13,14 +13,13 @@ bool AABB::Intersect(glm::vec3 ro, glm::vec3 rd)
 	glm::vec3 t2 = glm::max(tMin, tMax);
 	float tNear = glm::max(glm::max(t1.x, t1.y), t1.z);
 	float tFar = glm::min(glm::min(t2.x, t2.y), t2.z);
-	if (tNear > tFar)
+	if (tNear >= tFar)
 		return false;
 	return true;
 }
 
 PathTracer::PathTracer()
 {
-	m_imgResolution = glm::ivec2(0);
 	m_outImg = 0;
 
 	m_camDir = glm::vec3(0.0f, 0.0f, 1.0f);
@@ -29,6 +28,7 @@ PathTracer::PathTracer()
 	m_camFovy = 90;
 
 	samples = 0;
+	seed = 0;
 }
 
 PathTracer::~PathTracer()
@@ -106,8 +106,6 @@ int PathTracer::LoadMesh(std::string file, glm::mat4 model, bool ccw)
 		}
 		id = scene_mesh.size();
         scene_mesh.push_back(mesh);
-		std::cout << mesh.aabb.min.x << "," << mesh.aabb.min.y << "," << mesh.aabb.min.z << std::endl;
-		std::cout << mesh.aabb.max.x << "," << mesh.aabb.max.y << "," << mesh.aabb.max.z << std::endl;
 	}
 
 	return id;
@@ -183,8 +181,22 @@ void PathTracer::AddLight(glm::vec3 position, glm::vec3 color) {
     scene_lights.push_back(light);
 }
 
-glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
+int PathTracer::GetSamples()
 {
+	return samples;
+}
+
+float PathTracer::Rand(glm::vec2 co)
+{
+	seed++;
+	return glm::fract(sinf((float)seed / samples * glm::dot(co, glm::vec2(12.9898f, 78.233f))) * 43758.5453f);
+}
+
+glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 seed, int depth)
+{
+	if (depth >= 2)
+		return glm::vec3(0.0);
+
 	float dist = INF;
 	int mid = -1;
 	int tid = -1;
@@ -221,16 +233,22 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
 		if (glm::length(intersect_d.material.emissive) != 0.0f)
 			return intersect_d.material.emissive;
 
-		if (depth < 1)
+		if (depth < 2)
 		{
 			depth++;
-			glm::vec3 reflectDir = glm::normalize(glm::vec3(3.0f, 6.0f, -1.0f) - intersect_d.point);
-			return Trace(intersect_d.point, reflectDir, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * 5.0f;
+
+			// Monte Carlo Integration
+			glm::vec3 n = intersect_d.surf_normal;
+			glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), n) : glm::cross(glm::vec3(1), n);
+			u = glm::normalize(u);
+			glm::vec3 v = glm::cross(u, n);
+			float w = Rand(seed), theta = Rand(seed);
+			// uniformly sampling on hemisphere
+			glm::vec3 reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * n;
+
+			return Trace(intersect_d.point, reflectDir, seed, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * 5.0f;
 			//return glm::vec3(1.0f);
 		}
-
-		if (depth >= 1)
-			return glm::vec3(0.0);
 
 		//glm::vec3 radiance = eval_direct_BRDF(intersect_d, reflectDir, rd);
 
@@ -305,7 +323,7 @@ void PathTracer::RenderFrame()
 		for (int j = 0; j < m_imgResolution.x; j++)
 		{
 			glm::vec3 rayDir = glm::normalize(pixel - m_camPos);
-			glm::vec3 color = Trace(m_camPos, rayDir);
+			glm::vec3 color = Trace(m_camPos, rayDir, glm::vec2(i, j));
 			// Draw
 			int imgPixel = ((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3;
 			if (samples == 1)
@@ -314,9 +332,12 @@ void PathTracer::RenderFrame()
 				m_outImg[imgPixel + 1] = 0;
 				m_outImg[imgPixel + 2] = 0;
 			}
-			m_outImg[imgPixel] = (color.r * 255 + m_outImg[imgPixel] * (samples - 1)) / samples;
-			m_outImg[imgPixel + 1] = (color.g * 255 + m_outImg[imgPixel + 1] * (samples - 1)) / samples;
-			m_outImg[imgPixel + 2] = (color.b * 255 + m_outImg[imgPixel + 2] * (samples - 1)) / samples;
+			if (glm::length(color) != 0.0f)
+			{
+				m_outImg[imgPixel] = (color.r * 255 + m_outImg[imgPixel] * (samples - 1)) / samples;
+				m_outImg[imgPixel + 1] = (color.g * 255 + m_outImg[imgPixel + 1] * (samples - 1)) / samples;
+				m_outImg[imgPixel + 2] = (color.b * 255 + m_outImg[imgPixel + 2] * (samples - 1)) / samples;
+			}
 
 			pixel += camRight * deltaX;
 		}

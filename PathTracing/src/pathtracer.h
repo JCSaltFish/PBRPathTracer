@@ -50,6 +50,7 @@ private:
 	float m_camFovy;
 
 	int samples;
+	int seed;
 
 public:
 	PathTracer();
@@ -59,12 +60,14 @@ private:
 	void BuildAABB(glm::vec3 v, AABB& aabb);
 
 	bool Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut);
-	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int depth = 0);
+	float Rand(glm::vec2 co);
+	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 seed, int depth = 0);
 
 public:
 	int LoadMesh(std::string file, glm::mat4 model, bool ccw = false);
 	void SetMeshMaterial(int id, Material m);
     void AddLight(glm::vec3 position, glm::vec3 color);
+	int GetSamples();
 
 	void SetOutImage(GLubyte* out);
 	void SetResolution(glm::ivec2 res);
