@@ -88,7 +88,7 @@ glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incom
     glm::vec3 out_dir = glm::normalize(outgoing);
     
     // point to light direction
-    glm::vec3 light_dir = -incoming_dir;
+    glm::vec3 light_dir = incoming_dir;
 
     // get cook-torrance specular term for each light
 
@@ -98,7 +98,7 @@ glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incom
     // fresnel
     // F0 surface reflection at zero incidence or how much the surface reflects if looking directly at the surface
     glm::vec3 f0 = base_color_to_specular(int_data.material.base_color, int_data.material.metalness);
-    glm::vec3 f_term = fresnel_schlick(half, light_dir, f0);
+    glm::vec3 f_term = fresnel_schlick(half, out_dir, f0);
 
     // D normal distribution term
     float d_term = GGX_distribution(int_data.material.roughness, int_data.surf_normal, half);
