@@ -172,13 +172,14 @@ void InitializePathTracer()
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
-    id = pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, -3.0f, 0.0f)));
+    id = pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, -3.0f, 0.0f)), true);
 	m.base_color = glm::vec3(1.0f, 1.0f, 0.0f);
 	m.metalness = 1.0f;
 	m.roughness = 0.5f;
 	pathTracer.SetMeshMaterial(id, m);
 
-	id = pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 6.0f, 1.0f)), glm::vec3(0.5f)));
+	// Light
+	id = pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 6.0f, -1.0f)), glm::vec3(0.5f)));
 	m.emissive = glm::vec3(1.0);
 	pathTracer.SetMeshMaterial(id, m);
 

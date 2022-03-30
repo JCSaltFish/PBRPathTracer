@@ -51,7 +51,7 @@ private:
 	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int depth = 0);
 
 public:
-	int LoadMesh(std::string file, glm::mat4 model);
+	int LoadMesh(std::string file, glm::mat4 model, bool ccw = false);
 	void SetMeshMaterial(int id, Material m);
     void AddLight(glm::vec3 position, glm::vec3 color);
 

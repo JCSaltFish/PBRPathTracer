@@ -23,7 +23,7 @@ PathTracer::~PathTracer()
 
 }
 
-int PathTracer::LoadMesh(std::string file, glm::mat4 model)
+int PathTracer::LoadMesh(std::string file, glm::mat4 model, bool ccw)
 {
 	int id = -1;
 
@@ -54,7 +54,9 @@ int PathTracer::LoadMesh(std::string file, glm::mat4 model)
 			// normal
 			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
 			glm::vec3 e2 = glm::normalize(t.v3 - t.v1);
-			t.normal = -glm::normalize(glm::cross(e1, e2));
+			t.normal = glm::normalize(glm::cross(e1, e2));
+			if (ccw)
+				t.normal = -t.normal;
 
             mesh.triangles.push_back(t);
 		}
@@ -163,20 +165,22 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth)
 	{
 		Intersect_data intersect_d;
 		intersect_d.surf_normal = scene_mesh[mid].triangles[tid].normal;
-		intersect_d.point = ro + rd * (dist - EPS);
+		intersect_d.point = ro + rd * dist;
+		intersect_d.point += intersect_d.surf_normal * EPS;
 		intersect_d.material = scene_mesh[mid].material;
 
 		if (glm::length(intersect_d.material.emissive) != 0.0f)
 			return intersect_d.material.emissive;
 
-		if (depth < 2)
+		if (depth < 1)
 		{
 			depth++;
-			glm::vec3 reflectDir = glm::normalize(glm::vec3(3.0f, 6.0f, 1.0f) - intersect_d.point);
-			return intersect_d.material.base_color;
+			glm::vec3 reflectDir = glm::normalize(glm::vec3(3.0f, 6.0f, -1.0f) - intersect_d.point);
+			return Trace(intersect_d.point, reflectDir, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * 5.0f;
+			//return intersect_d.surf_normal;
 		}
 
-		if (depth >= 2)
+		if (depth >= 1)
 			return glm::vec3(0.0);
 
 		//glm::vec3 radiance = eval_direct_BRDF(intersect_d, reflectDir, rd);
