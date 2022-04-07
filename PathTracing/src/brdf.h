@@ -22,11 +22,13 @@
 // BRDF (bidirectional reflective distribution function) is a function that takes as input 
 // the incoming(light) direction w, the outgoing(view) direction w, the surface normal n, and a surface parameter a that represents the microsurface's roughness.
 
+enum rtype { DIFFUSE, SPECULAR, GLOSSY};
+
 struct Material {
     glm::vec3 base_color;
     float metalness;
     float roughness;
-
+    rtype reflect_type;
    glm::vec3 emissive;
    /* float transmissivness;
     float opacity;*/

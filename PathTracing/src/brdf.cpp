@@ -14,6 +14,17 @@ float GGX_distribution(float roughness, glm::vec3 normal, glm::vec3 half) {
     return a2 / (float(M_PI) * b * b);
 }
 
+float beckmann_distribution(float roughness, glm::vec3 normal, glm::vec3 half) {
+    // Clamp NdotS to prevent numerical instability.
+    float n_dot_h = glm::clamp(glm::dot(normal, half), FLT_EPSILON, 1.0f); // make sure no negative in denominator
+    float nh = n_dot_h * n_dot_h;
+    float tan = (1.0 - nh)/ nh; 
+    float mm = roughness * roughness;
+    float numerator = glm::exp(-(tan / mm));
+    
+    return numerator / (4 * mm *(nh * nh) + FLT_EPSILON);
+}
+
 // The geometry function statistically approximates the relative surface area where its micro surface-details overshadow each other, causing light rays to be occluded.
 //The geometry function we will use is a combination of the GGX and Schlick-Beckmann approximation known as Schlick-GGX
 float geometry_schlick_GGX(glm::vec3 normal, glm::vec3 view, float k) {
@@ -102,6 +113,7 @@ bool on_hemisphere(const Intersect_data& int_data, const glm::vec3 incoming, con
     return !(v_back_facing || l_back_facing);
 }
 
+// (PDF) probability distribution function = 1
 // incoming_dir and out_dir sampled from hemisphere
 // incoming_dir is initially from light because we want to know how much light is reflected on point, out is view direction  
 glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incoming, const glm::vec3 outgoing) {
@@ -120,19 +132,19 @@ glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incom
     float f_term = float_fresnel_schlick(int_data.surf_normal, flipped_out, int_data.material.metalness);
 
     // D normal distribution term
-    float d_term = GGX_distribution(int_data.material.roughness, int_data.surf_normal, half);
-
+    //float d_term = GGX_distribution(int_data.material.roughness, int_data.surf_normal, half);
+    float d_term = beckmann_distribution(int_data.material.roughness, int_data.surf_normal, half);
     // G geometry attenuation term
     float g_term = geometry_smith(int_data.surf_normal, out_dir, incoming_dir, int_data.material.roughness);
 
-    float diffuse = 1.0f / float(M_PI);
+    //float diffuse = 1.0f / float(M_PI);
 
     // cooktorrance specular BRDF
     float reflected = f_term;
     float refracted = 1.0f - reflected; 
-    //refracted *= 1.0 - int_data.material.metalness; // metallic dont refract so no diffuse
+    refracted *= 1.0 - int_data.material.metalness; // metallic dont refract so no diffuse
     glm::vec3 specular = eval_cook_torrance_specular_brdf(d_term, g_term, f_term, int_data.surf_normal, out_dir, incoming_dir) * int_data.material.base_color;
-
+    //return glm::vec3(d_term);
     return ((refracted * int_data.material.base_color / float(M_PI)) + specular);
 }
 
