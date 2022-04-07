@@ -117,11 +117,7 @@ glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incom
     glm::vec3 half = glm::normalize(flipped_out + incoming); // approximate microsurfaces 
 
     // fresnel: how much light should be reflected
-    // F0 surface reflection at zero incidence or how much the surface reflects if looking directly at the surface
-    glm::vec3 f0 = base_color_to_specular(int_data.material.base_color, int_data.material.metalness);
-
-    //glm::vec3 f_term = fresnel_schlick(int_data.surf_normal, -outgoing, f0);
-    float ff_term = float_fresnel_schlick(int_data.surf_normal, flipped_out, int_data.material.metalness);
+    float f_term = float_fresnel_schlick(int_data.surf_normal, flipped_out, int_data.material.metalness);
 
     // D normal distribution term
     float d_term = GGX_distribution(int_data.material.roughness, int_data.surf_normal, half);
@@ -132,10 +128,10 @@ glm::vec3 eval_direct_BRDF(const Intersect_data& int_data, const glm::vec3 incom
     float diffuse = 1.0f / float(M_PI);
 
     // cooktorrance specular BRDF
-    float reflected = ff_term;
+    float reflected = f_term;
     float refracted = 1.0f - reflected; 
-    refracted *= 1.0 - int_data.material.metalness; // metallic dont refract so no diffuse
-    glm::vec3 specular = eval_cook_torrance_specular_brdf(d_term, g_term, ff_term, int_data.surf_normal, out_dir, incoming_dir) * int_data.material.base_color;
+    //refracted *= 1.0 - int_data.material.metalness; // metallic dont refract so no diffuse
+    glm::vec3 specular = eval_cook_torrance_specular_brdf(d_term, g_term, f_term, int_data.surf_normal, out_dir, incoming_dir) * int_data.material.base_color;
 
     return ((refracted * int_data.material.base_color / float(M_PI)) + specular);
 }
