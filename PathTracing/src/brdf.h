@@ -43,7 +43,7 @@ struct Intersect_data {
     Material material;
 };
 
-
+// 4% most common used by UE4, but water is 2% TODO: try changing to 2 . diamond is 1.8% but now we are clamping to 0-1
 const float MIN_DIELECTRICS_F0 = 0.04f; // base reflectivity (F0) - index of refraction
 
 bool on_hemisphere(const Intersect_data& int_data, const glm::vec3 incoming, const glm::vec3 outgoing);
