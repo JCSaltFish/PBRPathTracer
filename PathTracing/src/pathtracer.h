@@ -38,7 +38,6 @@ class PathTracer
 {
 private:
     std::vector<Mesh> scene_mesh;
-    std::vector<Light> scene_lights; // or store lights in list
 
 	glm::ivec2 m_imgResolution;
 	GLubyte* m_outImg;
@@ -66,7 +65,6 @@ private:
 public:
 	int LoadMesh(std::string file, glm::mat4 model, bool ccw = false);
 	void SetMeshMaterial(int id, Material m);
-    void AddLight(glm::vec3 position, glm::vec3 color);
 	int GetSamples();
 
 	void SetOutImage(GLubyte* out);

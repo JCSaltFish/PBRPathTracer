@@ -173,14 +173,6 @@ bool PathTracer::Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& di
 	return res;
 }
 
-void PathTracer::AddLight(glm::vec3 position, glm::vec3 color) {
-    Light light;
-    light.color = color;
-    light.position = position;
-
-    scene_lights.push_back(light);
-}
-
 int PathTracer::GetSamples()
 {
 	return samples;
@@ -194,8 +186,6 @@ float PathTracer::Rand(glm::vec2 co)
 
 glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 seed, int depth)
 {
-	if (depth >= 2)
-		return glm::vec3(0.0);
 
 	float dist = INF;
 	int mid = -1;
@@ -233,21 +223,53 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 seed, int dept
 		if (glm::length(intersect_d.material.emissive) != 0.0f)
 			return intersect_d.material.emissive;
 
-		if (depth < 2)
-		{
+        if (depth < 20)
+		{ 
 			depth++;
 
-			// Monte Carlo Integration
-			glm::vec3 n = intersect_d.surf_normal;
-			glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), n) : glm::cross(glm::vec3(1), n);
-			u = glm::normalize(u);
-			glm::vec3 v = glm::cross(u, n);
-			float w = Rand(seed), theta = Rand(seed);
-			// uniformly sampling on hemisphere
-			glm::vec3 reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * n;
+            glm::vec3 r = glm::reflect(rd, intersect_d.surf_normal);
+            glm::vec3 reflectDir;
+            if (intersect_d.material.reflect_type == SPECULAR) {
+                reflectDir = r;
+            }
+            else if (intersect_d.material.reflect_type == DIFFUSE) {
+                // Monte Carlo Integration
+                glm::vec3 n = intersect_d.surf_normal;
+                glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), n) : glm::cross(glm::vec3(1), n);
+                u = glm::normalize(u);
+                glm::vec3 v = glm::cross(u, n);
+                float w = Rand(seed), theta = Rand(seed);
+                // uniformly sampling on hemisphere
+                reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * n;
+            }
+            else if (intersect_d.material.reflect_type == GLOSSY) {
+                // Monte Carlo Integration
+                glm::vec3 n = intersect_d.surf_normal;
+                glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
+                u = glm::normalize(u);
+                glm::vec3 v = glm::cross(u, r);
+                float w = Rand(seed), theta = Rand(seed);
+                // uniformly sampling on hemisphere
+                reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * r;
+            }
 
-			return Trace(intersect_d.point, reflectDir, seed, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * 5.0f;
-			//return glm::vec3(1.0f);
+            // distance from last intersection point 
+            //float attenuation = 0.0;
+            //if (next_int.point != glm::vec3(-INF)) {
+            //    float distance = glm::length(next_int.point - intersect_d.point) + FLT_EPSILON; // will be 0 if primary ray because the prev intersection is itself
+            //    attenuation = 1.0f / (distance * distance);
+            //}
+            // last intersection's material color  (NO NEED COS COLOR IS IN BRDF)
+            //glm::vec3 radiance = intersect_d.material.base_color * attenuation;
+            float n_dot_l = glm::dot(intersect_d.surf_normal, glm::normalize(reflectDir));
+ 
+            // will always return light color if hits the light so this is kd
+            // reflectDir points out
+            // reflectDir is incoming ray from brdf's perspective
+            // return  eval_direct_BRDF(intersect_d, reflectDir, rd);
+            float light_intensity = 18.0f;
+            //only flip view
+            return light_intensity * Trace(intersect_d.point, reflectDir, seed, depth) * eval_direct_BRDF(intersect_d, reflectDir, rd) * n_dot_l;
 		}
 
 		//glm::vec3 radiance = eval_direct_BRDF(intersect_d, reflectDir, rd);
@@ -317,27 +339,29 @@ void PathTracer::RenderFrame()
 		numThreads--;
 	// Loop through each pixel
 	#pragma omp parallel for num_threads(numThreads)
-	for (int i = 0; i < m_imgResolution.y; i++)
-	{
-		glm::vec3 pixel = topLeft - m_camUp * ((float)i * deltaY);
-		for (int j = 0; j < m_imgResolution.x; j++)
-		{
-			glm::vec3 rayDir = glm::normalize(pixel - m_camPos);
-			glm::vec3 color = Trace(m_camPos, rayDir, glm::vec2(i, j));
+    for (int i = 0; i < m_imgResolution.y; i++)
+    {
+        glm::vec3 pixel = topLeft - m_camUp * ((float)i * deltaY);
+        for (int j = 0; j < m_imgResolution.x; j++)
+        {
+            glm::vec3 rayDir = glm::normalize(pixel - m_camPos);
+
+            glm::vec3 color = Trace(m_camPos, rayDir, glm::vec2(i, j));
+
 			// Draw
 			int imgPixel = ((m_imgResolution.y - 1 - i) * m_imgResolution.x + j) * 3;
 			if (samples == 1)
 			{
-				m_outImg[imgPixel] = 0;
-				m_outImg[imgPixel + 1] = 0;
-				m_outImg[imgPixel + 2] = 0;
+				m_outImg[imgPixel] = color.r * 255;
+				m_outImg[imgPixel + 1] = color.g * 255;
+				m_outImg[imgPixel + 2] = color.b * 255;
 			}
 			if (glm::length(color) != 0.0f)
 			{
 				m_outImg[imgPixel] = (color.r * 255 + m_outImg[imgPixel] * (samples - 1)) / samples;
 				m_outImg[imgPixel + 1] = (color.g * 255 + m_outImg[imgPixel + 1] * (samples - 1)) / samples;
 				m_outImg[imgPixel + 2] = (color.b * 255 + m_outImg[imgPixel + 2] * (samples - 1)) / samples;
-			}
+            }
 
 			pixel += camRight * deltaX;
 		}
