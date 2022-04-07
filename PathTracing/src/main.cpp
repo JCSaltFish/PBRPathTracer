@@ -167,7 +167,7 @@ void InitializePathTracer()
 	
 	// Main object
 	//int id = pathTracer.LoadMesh("sphere.obj.object", glm::mat4(1.0f));
-	int id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, -2.0f, -1.0f)), glm::vec3(0.8f)), true);
+	int id = pathTracer.LoadMesh("cube.obj.object", glm::rotate(glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.7f, 0.7f, 0.4f)), glm::vec3(-5.0f, -4.0f, -6.0f)), 30.0f, glm::vec3(0.0f, 1.0f, 0.0f)), true);
 	Material m;
 	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
 	m.metalness = 0.0f;
@@ -176,49 +176,50 @@ void InitializePathTracer()
 
 	// Floor
 	id = pathTracer.LoadMesh("cube.obj.object", glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)), glm::vec3(0.0f, -3.0f, 0.0f)), true);
-	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.base_color = glm::vec3(0.9f, 0.9f, 0.8f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Back wall
 	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 5.0f)), glm::vec3(3.1f)), true);
-	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.base_color = glm::vec3(0.9f, 0.9f, 0.9f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Left wall
 	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(-12.0f, 0.0f, 0.0f)), glm::vec3(3.0f)), true);
-	m.base_color = glm::vec3(1.0f, 0.0f, 0.0f);
+	m.base_color = glm::vec3(0.8f, 0.2f, 0.2f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Right wall
 	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(12.0f, 0.0f, 0.0f)), glm::vec3(3.0f)), true);
-	m.base_color = glm::vec3(0.0f, 1.0f, 0.0f);
+	m.base_color = glm::vec3(0.2f, 0.8f, 0.2f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Ceilling
 	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec3(3.0f)), true);
-	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.base_color = glm::vec3(0.9f, 0.9f, 0.8f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Front wall
 	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f)), glm::vec3(3.1f)), true);
-	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.base_color = glm::vec3(0.9f, 0.9f, 0.9f);
 	m.metalness = 0.0f;
 	m.roughness = 1.0f;
 	pathTracer.SetMeshMaterial(id, m);
 
 	// Light
-	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 4.7f, -3.5f)), glm::vec3(0.7f, 0.5f, 0.5f)), true);
-	m.emissive = glm::vec3(4.0f);
+	id = pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 4.95f, -3.5f)), glm::vec3(0.7f, 0.5f, 0.3f)), true);
+	m.base_color = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.emissive = glm::vec3(20.0f);
 	pathTracer.SetMeshMaterial(id, m);
 
 	//pathTracer.AddLight(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f));

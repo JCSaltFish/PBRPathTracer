@@ -22,7 +22,7 @@ PathTracer::PathTracer()
 {
 	m_outImg = 0;
 	m_totalImg = 0;
-	m_maxDepth = 20;
+	m_maxDepth = 10;
 
 	m_camDir = glm::vec3(0.0f, 0.0f, 1.0f);
 	m_camUp = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -251,6 +251,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
                 float w = Rand(raySeed, randSeed), theta = Rand(raySeed, randSeed);
                 // uniformly sampling on hemisphere
 				reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
+				reflectDir = glm::normalize(reflectDir);
             //}
             //else if (intersect_d.material.reflect_type == GLOSSY)
 			//{
@@ -272,7 +273,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
             //}
             // last intersection's material color  (NO NEED COS COLOR IS IN BRDF)
             //glm::vec3 radiance = intersect_d.material.base_color * attenuation;
-            float n_dot_l = glm::dot(intersect_d.surf_normal, glm::normalize(reflectDir));
+            float n_dot_l = glm::dot(intersect_d.surf_normal, reflectDir);
  
             // will always return light color if hits the light so this is kd
             // reflectDir points out
