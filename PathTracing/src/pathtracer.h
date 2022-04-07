@@ -41,6 +41,8 @@ private:
 
 	glm::ivec2 m_imgResolution;
 	GLubyte* m_outImg;
+	float* m_totalImg;
+	int m_maxDepth;
 
 	glm::vec3 m_camPos;
 	glm::vec3 m_camDir;
@@ -49,7 +51,6 @@ private:
 	float m_camFovy;
 
 	int samples;
-	int seed;
 
 public:
 	PathTracer();
@@ -59,8 +60,8 @@ private:
 	void BuildAABB(glm::vec3 v, AABB& aabb);
 
 	bool Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut);
-	float Rand(glm::vec2 co);
-	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 seed, int depth = 0);
+	float Rand(glm::vec2 co, float& seed);
+	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth = 0);
 
 public:
 	int LoadMesh(std::string file, glm::mat4 model, bool ccw = false);
