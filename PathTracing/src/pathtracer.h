@@ -1,4 +1,4 @@
-#ifndef __PATHTRACER_H__brdf.h
+#ifndef __PATHTRACER_H__
 #define __PATHTRACER_H__
 
 #include <string>
@@ -6,66 +6,37 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
-#include "brdf.h"
-
-const float EPS = 0.001f;
-const float INF = (float)0xFFFF;
-
-struct MeshTriangle
-{
-	glm::vec3 v1;
-	glm::vec3 v2;
-	glm::vec3 v3;
-	glm::vec3 normal;
-};
-
-struct AABB
-{
-	glm::vec3 min = glm::vec3(INF);
-	glm::vec3 max = glm::vec3(-INF);
-
-	bool Intersect(glm::vec3 ro, glm::vec3 rd);
-};
-
-struct Mesh
-{
-    Material material;
-    std::vector<MeshTriangle> triangles;
-	AABB aabb;
-};
+#include "mesh.h"
 
 class PathTracer
 {
 private:
-    std::vector<Mesh> scene_mesh;
+	std::vector<Triangle> mTriangles;
+	BVHNode* mBvh;
 
-	glm::ivec2 m_imgResolution;
-	GLubyte* m_outImg;
-	float* m_totalImg;
-	int m_maxDepth;
+	glm::ivec2 mResolution;
+	GLubyte* mOutImg;
+	float* mTotalImg;
+	int mMaxDepth;
 
-	glm::vec3 m_camPos;
-	glm::vec3 m_camDir;
-	glm::vec3 m_camUp;
-	float m_camFocal;
-	float m_camFovy;
+	glm::vec3 mCamPos;
+	glm::vec3 mCamDir;
+	glm::vec3 mCamUp;
+	float mCamFocal;
+	float mCamFovy;
 
-	int samples;
+	int mSamples;
 
 public:
 	PathTracer();
 	~PathTracer();
 
 private:
-	void BuildAABB(glm::vec3 v, AABB& aabb);
-
-	bool Intersect(glm::vec3 ro, glm::vec3 rd, MeshTriangle t, float& distOut);
 	float Rand(glm::vec2 co, float& seed);
 	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth = 0);
 
 public:
-	int LoadMesh(std::string file, glm::mat4 model, bool ccw = false);
-	void SetMeshMaterial(int id, Material m);
+	void LoadMesh(std::string file, glm::mat4 model, Material material, bool ccw = false);
 	int GetSamples();
 
 	void SetOutImage(GLubyte* out);
