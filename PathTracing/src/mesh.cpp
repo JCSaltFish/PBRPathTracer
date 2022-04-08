@@ -31,21 +31,17 @@ void AABB::Build(glm::vec3 v)
 
 void AABB::Check()
 {
-	float minX = min.x;
-	float minY = min.y;
-	float minZ = min.z;
 	float maxX = max.x;
 	float maxY = max.y;
 	float maxZ = max.z;
 
-	if (minX == maxX)
+	if (min.x == maxX)
 		maxX += EPS;
-	if (minY == maxY)
+	if (min.y == maxY)
 		maxY += EPS;
-	if (minZ == maxZ)
+	if (min.z == maxZ)
 		maxZ += EPS;
 
-	min = glm::vec3(minX, minY, minZ);
 	max = glm::vec3(maxX, maxY, maxZ);
 }
 

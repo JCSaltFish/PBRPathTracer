@@ -17,6 +17,7 @@ PathTracer::PathTracer()
 	mCamFovy = 90;
 
 	mSamples = 0;
+	mNeedReset = false;
 }
 
 PathTracer::~PathTracer()
@@ -30,8 +31,6 @@ PathTracer::~PathTracer()
 
 void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material, bool ccw)
 {
-	int id = -1;
-
 	objl::Loader loader;
 	if (loader.LoadFile(file))
 	{
@@ -75,6 +74,11 @@ void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material, 
 	}
 }
 
+void PathTracer::ResetImage()
+{
+	mNeedReset = true;
+}
+
 void PathTracer::SetOutImage(GLubyte* out)
 {
 	mOutImg = out;
@@ -83,13 +87,27 @@ void PathTracer::SetOutImage(GLubyte* out)
 void PathTracer::SetResolution(glm::ivec2 res)
 {
 	mResolution = res;
-
 	mTotalImg = new float[res.x * res.y * 3];
 }
 
 glm::ivec2 PathTracer::GetResolution()
 {
 	return mResolution;
+}
+
+int PathTracer::GetTriangleCount()
+{
+	return mTriangles.size();
+}
+
+int PathTracer::GetTraceDepth()
+{
+	return mMaxDepth;
+}
+
+void PathTracer::SetTraceDepth(int depth)
+{
+	mMaxDepth = depth;
 }
 
 void PathTracer::SetCamera(glm::vec3 pos, glm::vec3 dir, glm::vec3 up)
@@ -130,7 +148,10 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 	{
 		Material mat = t.material;
 		glm::vec3 n = t.normal;
-		glm::vec3 p = ro + rd * d + n * EPS;
+		glm::vec3 p = ro + rd * (d - EPS);
+		if (glm::dot(n, rd) > 0.0f)
+			n = -n;
+
 		if (depth < mMaxDepth * 2)
 		{
 			depth++;
@@ -169,8 +190,27 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 			}
 			else if (mat.type == MaterialType::GLASS)
 			{
-				// TODO: Translusency here
-				reflectDir = r;
+				float nc = 1.0f, ng = 1.5f;
+				bool inside = glm::dot(t.normal, n) < 0.0f;
+				// Snells law
+				float eta = inside ? ng / nc : nc / ng;
+				float r0 = glm::pow((nc - ng) / (nc + ng), 2.0f);
+				float c = glm::abs(glm::dot(rd, n));
+				float k = 1.0f - eta * eta * (1.0f - c * c);
+				if (k < 0.0f)
+					reflectDir = r;
+				else
+				{
+					// Shilick's approximation of Fresnel's equation
+					float re = r0 + (1.0f - r0) * glm::pow(1.0f - c, 5.0f);
+					if (glm::abs(Rand(raySeed, randSeed)) < re)
+						reflectDir = r;
+					else
+					{
+						reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + glm::sqrt(k)) * n);
+						p -= n * EPS;
+					}
+				}
 			}
 
 			return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth) * mat.baseColor;
@@ -182,8 +222,14 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 
 void PathTracer::RenderFrame()
 {
+	if (mNeedReset)
+	{
+		for (int i = 0; i < mResolution.x * mResolution.y * 3; i++)
+			mTotalImg[i] = 0.0f;
+		mNeedReset = false;
+	}
+
 	mSamples++;
-	//samples = 20;
 
 	// Position world space image plane
 	glm::vec3 imgCenter = mCamPos + mCamDir * mCamFocal;

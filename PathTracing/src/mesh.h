@@ -57,7 +57,6 @@ private:
 	static bool TriYCompare(const Triangle& a, const Triangle& b);
 	static bool TriZCompare(const Triangle& a, const Triangle& b);
 
-
 public:
 	BVHNode();
 	BVHNode(Triangle t);

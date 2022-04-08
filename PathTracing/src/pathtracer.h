@@ -26,6 +26,7 @@ private:
 	float mCamFovy;
 
 	int mSamples;
+	bool mNeedReset;
 
 public:
 	PathTracer();
@@ -37,11 +38,16 @@ private:
 
 public:
 	void LoadMesh(std::string file, glm::mat4 model, Material material, bool ccw = false);
-	int GetSamples();
+	void ResetImage();
 
+	int GetSamples();
+	int GetTriangleCount();
+	int GetTraceDepth();
+	void SetTraceDepth(int depth);
 	void SetOutImage(GLubyte* out);
 	void SetResolution(glm::ivec2 res);
 	glm::ivec2 GetResolution();
+
 	void SetCamera(glm::vec3 pos, glm::vec3 dir, glm::vec3 up);
 	void SetProjection(float f, float fovy);
 	void RenderFrame();

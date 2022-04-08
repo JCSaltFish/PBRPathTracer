@@ -162,7 +162,7 @@ void InitializeFrame()
 void InitializePathTracer()
 {
 	pathTracer.SetResolution(glm::ivec2(wWindow, hWindow));
-	
+	pathTracer.SetTraceDepth(3);
 	pathTracer.SetCamera(glm::vec3(0.0f, 0.0f, -9.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	
 	// Main object
@@ -170,8 +170,15 @@ void InitializePathTracer()
 	m.baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
 	m.type = MaterialType::GLOSSY;
 	m.roughness = 0.4f;
-	pathTracer.LoadMesh("teapot.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -4.0f, -3.0f)), glm::vec3(0.7f)), m);
-	//pathTracer.LoadMesh("cube.obj.object", glm::rotate(glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.7f, 0.7f, 0.4f)), glm::vec3(-5.0f, -4.0f, -6.0f)), 30.0f, glm::vec3(0.0f, 1.0f, 0.0f)), m, true);
+	pathTracer.LoadMesh("teapot.object", glm::scale(glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -4.0f, -3.0f)), -10.0f, glm::vec3(0.0f, 1.0f, 0.0f)), glm::vec3(0.7f)), m);
+	
+	m.baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.type = MaterialType::DIFFUSE;
+	pathTracer.LoadMesh("cube.obj.object", glm::rotate(glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.7f, 0.7f, 0.4f)), glm::vec3(-5.0f, -4.0f, -6.0f)), 30.0f, glm::vec3(0.0f, 1.0f, 0.0f)), m, true);
+
+	m.baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+	m.type = MaterialType::GLASS;
+	pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, -2.0f, -4.0f)), glm::vec3(0.3f)), m);
 
 	// Floor
 	m.baseColor = glm::vec3(0.9f, 0.9f, 0.8f);
@@ -205,20 +212,11 @@ void InitializePathTracer()
 	pathTracer.LoadMesh("cube.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 4.95f, -3.5f)), glm::vec3(0.7f, 0.5f, 0.3f)), m, true);
 }
 
-void PTRenderLoop()
-{
-	while (!glfwWindowShouldClose(window))
-	{
-		pathTracer.RenderFrame();
-		shouldRedisplay = true;
-	}
-}
-
 void OnExit()
 {
 	if (texData)
 	{
-		delete texData;
+		delete[] texData;
 		texData = 0;
 	}
 }
@@ -249,7 +247,11 @@ int main()
 			glfwPollEvents();
 		}
 		#pragma omp section
-		PTRenderLoop();
+		while (!glfwWindowShouldClose(window))
+		{
+			pathTracer.RenderFrame();
+			shouldRedisplay = true;
+		}
 	}
 
 	ImGui_ImplOpenGL3_Shutdown();
