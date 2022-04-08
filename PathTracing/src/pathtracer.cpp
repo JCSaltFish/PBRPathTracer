@@ -124,71 +124,57 @@ float PathTracer::Rand(glm::vec2 co, float& seed)
 
 glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth)
 {
-	float dist = INF;
-	int tid = -1;
-	Triangle triangle;
-	
-	// Find intersection
 	float d = 0.0f;
 	Triangle t;
 	if (mBvh->Hit(ro, rd, t, d))
 	{
-		if (d < dist)
+		Material mat = t.material;
+		glm::vec3 n = t.normal;
+		glm::vec3 p = ro + rd * d + n * EPS;
+		if (depth < mMaxDepth * 2)
 		{
-			dist = d;
-			tid = 1;
-			triangle = t;
-		}
-	}
-	else
-		return glm::vec3(0.0f);
+			depth++;
+			// Russian Roulette Path Termination
+			float prob = glm::min(0.95f, glm::max(glm::max(mat.baseColor.x, mat.baseColor.y), mat.baseColor.z));
+			if (depth >= mMaxDepth)
+			{
+				if (glm::abs(Rand(raySeed, randSeed)) > prob)
+					return mat.emissive;
+			}
 
-	Material mat = triangle.material;
-	glm::vec3 n = triangle.normal;
-	glm::vec3 p = ro + rd * dist + n * EPS;
-	if (depth < mMaxDepth * 2)
-	{
-		depth++;
-		// Russian Roulette Path Termination
-		float prob = glm::min(0.95f, glm::max(glm::max(mat.baseColor.x, mat.baseColor.y), mat.baseColor.z));
-		if (depth >= mMaxDepth)
-		{
-			if (glm::abs(Rand(raySeed, randSeed)) > prob)
-				return mat.emissive;
-		}
+			glm::vec3 r = glm::reflect(rd, n);
+			glm::vec3 reflectDir;
+			if (mat.type == MaterialType::SPECULAR)
+				reflectDir = r;
+			else if (mat.type == MaterialType::DIFFUSE)
+			{
+				// Monte Carlo Integration
+				glm::vec3 u = glm::abs(n.x) < 1.0f - EPS ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
+				u = glm::normalize(u);
+				glm::vec3 v = glm::normalize(glm::cross(u, n));
+				float w = Rand(raySeed, randSeed), theta = Rand(raySeed, randSeed);
+				// uniformly sampling on hemisphere
+				reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
+				reflectDir = glm::normalize(reflectDir);
+			}
+			else if (mat.type == MaterialType::GLOSSY)
+			{
+				// Monte Carlo Integration
+				glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
+				u = glm::normalize(u);
+				glm::vec3 v = glm::cross(u, r);
+				float w = Rand(raySeed, randSeed) * mat.roughness, theta = Rand(raySeed, randSeed);
+				// wighted sampling on hemisphere
+				reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * r;
+			}
+			else if (mat.type == MaterialType::GLASS)
+			{
+				// TODO: Translusency here
+				reflectDir = r;
+			}
 
-		glm::vec3 r = glm::reflect(rd, n);
-		glm::vec3 reflectDir;
-		if (mat.type == MaterialType::SPECULAR)
-			reflectDir = r;
-		else if (mat.type == MaterialType::DIFFUSE)
-		{
-			// Monte Carlo Integration
-			glm::vec3 u = glm::abs(n.x) < 1.0f - EPS ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
-			u = glm::normalize(u);
-			glm::vec3 v = glm::normalize(glm::cross(u, n));
-			float w = Rand(raySeed, randSeed), theta = Rand(raySeed, randSeed);
-			// uniformly sampling on hemisphere
-			reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
-			reflectDir = glm::normalize(reflectDir);
+			return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth) * mat.baseColor;
 		}
-		else if (mat.type == MaterialType::GLOSSY)
-		{
-			// Monte Carlo Integration
-			glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
-			u = glm::normalize(u);
-			glm::vec3 v = glm::cross(u, r);
-			float w = Rand(raySeed, randSeed) * mat.roughness, theta = Rand(raySeed, randSeed);
-			// wighted sampling on hemisphere
-			reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * r;
-		}
-		else if (mat.type == MaterialType::GLASS)
-		{
-			// TODO: Translusency here
-			reflectDir = r;
-		}
-
-		return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth) * mat.baseColor;
 	}
 
 	return glm::vec3(0.0f);
