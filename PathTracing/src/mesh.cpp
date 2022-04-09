@@ -186,6 +186,20 @@ BVHNode* BVHNode::Construct(std::vector<Triangle> triangles)
 	return this;
 }
 
+// based from:
+// https://blackpawn.com/texts/pointinpoly/?fbclid=IwAR2utQtHuFUrHXRszp5sP8CP3jJuMNsOVrpwqAWWSBIx6DLENK5T9lkMceA
+bool BVHNode::IsSameSide(glm::vec3 p1, glm::vec3 p2, glm::vec3 a, glm::vec3 b) {
+    glm::vec3 ba = b - a;
+    glm::vec3 cp1 = glm::cross(ba, (p1 - a));
+    glm::vec3 cp2 = glm::cross(ba, (p2 - a));
+
+    return (glm::dot(cp1, cp2) >= 0);
+}
+
+bool BVHNode::IsInside(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+    return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
+}
+
 bool BVHNode::Hit(glm::vec3 ro, glm::vec3 rd, Triangle& triangleOut, float& distOut)
 {
 	if (mLeft && mRight)
@@ -238,18 +252,11 @@ bool BVHNode::Hit(glm::vec3 ro, glm::vec3 rd, Triangle& triangleOut, float& dist
 		// update intersection point
 		glm::vec3 p = ro + rd * distOut;
 
-		// If the sum of all the angles is approximately equal to 360 degrees
-		// then the intersection is in the triangle.
-		float r = glm::acos(glm::dot(glm::normalize(mTriangle.v1 - p), glm::normalize(mTriangle.v2 - p)));
-		r += glm::acos(glm::dot(glm::normalize(mTriangle.v2 - p), glm::normalize(mTriangle.v3 - p)));
-		r += glm::acos(glm::dot(glm::normalize(mTriangle.v3 - p), glm::normalize(mTriangle.v1 - p)));
-		if (abs(r - 2.0f * (float)M_PI) < EPS)
-		{
-			triangleOut = mTriangle;
-			return true;
-		}
-
-		return false;
+        if (IsInside(p, mTriangle.v1, mTriangle.v2, mTriangle.v3)) {
+            triangleOut = mTriangle;
+            return true;
+        }
+        return false;
 	}
 
 	return false;

@@ -56,6 +56,8 @@ private:
 	static bool TriXCompare(const Triangle& a, const Triangle& b);
 	static bool TriYCompare(const Triangle& a, const Triangle& b);
 	static bool TriZCompare(const Triangle& a, const Triangle& b);
+    static bool IsSameSide(glm::vec3 p1, glm::vec3 p2, glm::vec3 a, glm::vec3 b);
+    static bool IsInside(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c);
 
 public:
 	BVHNode();
