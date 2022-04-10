@@ -34,7 +34,7 @@
 GLuint shaderProgram;
 
 GLFWwindow* window;
-GLint rightBarWidth = 400;
+GLint rightBarWidth = 800;
 GLint wRender = 800;
 GLint hRender = 600;
 GLint wWindow = wRender + rightBarWidth;
