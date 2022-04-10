@@ -45,7 +45,6 @@ GLuint frameTex = -1;
 GLubyte* texData = 0;
 
 PathTracer pathTracer;
-bool shouldRedisplay = false;
 bool render = false;
 float timePause = 0.0f;
 float timeElapsed = 0.0f;
@@ -94,36 +93,58 @@ void DrawGui()
     ImGui::SetNextWindowPos(ImVec2(wRender + 10, 10));
     ImGui::SetNextWindowSize(ImVec2(rightBarWidth - 10, hRender - 10));
     ImGui::Begin("Path Tracer");
-    ImGui::SetWindowFontScale(2.0f);
+    //ImGui::SetWindowFontScale(2.0f);
 
     ImGui::Text("Samples: %.i", pathTracer.GetSamples());
     ImGui::Text("Triangle Count: %.i", pathTracer.GetTriangleCount());
-    ImGui::InputInt("Trace Depth: ", &traceDepth, 1, 100);
-    // average time per frame: elapsed time/frames loaded
-    ImGui::Text("Avg Time per Frame: %.3f", (glfwGetTime() / pathTracer.GetSamples()));
-    ImGui::Text("Time Elapsed: %.3f", render ? glfwGetTime() : timePause);
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-    
-    if (ImGui::Button("Render"))
-    {
-        render = true;
-        glfwSetTime(timePause); // reset timer
-    }
-    if (ImGui::Button("Pause"))
-    {
-        render = false;
-        timePause = glfwGetTime();
-    }
-    if (ImGui::Button("Save"))
-    {
-        // export 
-        saveFile = true;
-    }
+    ImGui::InputInt("Trace Depth", &traceDepth, 1, 100);
 
-    if (ImGui::Button("Quit"))
-    {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }
+	if (!render)
+	{
+		if (ImGui::Button("Render"))
+		{
+			render = true;
+			glfwSetTime(timePause); // reset timer
+		}
+	}
+	else
+	{
+		if (ImGui::Button("Pause"))
+		{
+			render = false;
+			timePause = glfwGetTime();
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reset"))
+	{
+		pathTracer.ResetImage();
+		glfwSetTime(0.0); // reset timer
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Save"))
+	{
+		// export 
+		saveFile = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Quit"))
+	{
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
+	}
+
+    // average time per frame: elapsed time/frames loaded
+	ImGui::Text("Time Elapsed: %.3f s", render ? glfwGetTime() : timePause);
+	if (!render)
+	{
+		if (pathTracer.GetSamples() == 0)
+			ImGui::Text("Avg Time per Frame: %.3f s", 0.0f);
+		else
+			ImGui::Text("Avg Time per Frame: %.3f s", timePause / pathTracer.GetSamples());
+	}
+	else
+		ImGui::Text("Avg Time per Frame: %.3f s", glfwGetTime() / pathTracer.GetSamples());
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     
     ImGui::End();
 
@@ -151,14 +172,10 @@ void Display()
 
 void Idle()
 {
-	if (shouldRedisplay)
-	{
-		glBindTexture(GL_TEXTURE_2D, frameTex);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wRender, hRender, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		Display();
-		shouldRedisplay = false;
-	}
+	glBindTexture(GL_TEXTURE_2D, frameTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wRender, hRender, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	Display();
 }
 
 // keyboard callback
@@ -330,17 +347,15 @@ int main()
                 pathTracer.RenderFrame();
             }
 
-            int i = pathTracer.GetSamples();
+            /*int i = pathTracer.GetSamples();
             if (i == 10 || i == 100 || i == 1000 || i == 10000) {
                 saveFile = true;
-            }
+            }*/
 
             if (saveFile) {
                 saveImage();
                 saveFile = false;
             }
-
-            shouldRedisplay = true;
 		}
 
 	}
