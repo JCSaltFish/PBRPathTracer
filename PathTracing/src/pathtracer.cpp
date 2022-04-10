@@ -29,7 +29,7 @@ PathTracer::~PathTracer()
 		delete mBvh;
 }
 
-void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material, bool ccw)
+void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material)
 {
 	objl::Loader loader;
 	if (loader.LoadFile(file))
@@ -59,8 +59,6 @@ void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material, 
 			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
 			glm::vec3 e2 = glm::normalize(t.v3 - t.v1);
 			t.normal = glm::normalize(glm::cross(e1, e2));
-			if (ccw)
-				t.normal = -t.normal;
 
 			t.material = material;
 			mTriangles.push_back(t);
@@ -140,7 +138,7 @@ float PathTracer::Rand(glm::vec2 co, float& seed)
 	return glm::fract(sinf(seed / mSamples * glm::dot(co, glm::vec2(12.9898f, 78.233f))) * 43758.5453f);
 }
 
-glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth)
+glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth, bool inside)
 {
 	float d = 0.0f;
 	Triangle t;
@@ -148,9 +146,10 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 	{
 		Material mat = t.material;
 		glm::vec3 n = t.normal;
-		glm::vec3 p = ro + rd * (d - EPS);
+		glm::vec3 p = ro + rd * d;
 		if (glm::dot(n, rd) > 0.0f)
 			n = -n;
+		p += n * EPS;
 
 		if (depth < mMaxDepth * 2)
 		{
@@ -191,7 +190,6 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 			else if (mat.type == MaterialType::GLASS)
 			{
 				float nc = 1.0f, ng = 1.5f;
-				bool inside = glm::dot(t.normal, n) < 0.0f;
 				// Snells law
 				float eta = inside ? ng / nc : nc / ng;
 				float r0 = glm::pow((nc - ng) / (nc + ng), 2.0f);
@@ -202,18 +200,19 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 				else
 				{
 					// Shilick's approximation of Fresnel's equation
-					float re = r0 + (1.0f - r0) * glm::pow(1.0f - c, 5.0f);
+					float re = r0 + (1.0f - r0) * glm::pow(1.0f - c, 2.0f);
 					if (glm::abs(Rand(raySeed, randSeed)) < re)
 						reflectDir = r;
 					else
 					{
 						reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + glm::sqrt(k)) * n);
-						p -= n * EPS;
+						p -= n * EPS * 2.0f;
+						inside = !inside;
 					}
 				}
 			}
 
-			return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth) * mat.baseColor;
+			return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth, inside) * mat.baseColor;
 		}
 	}
 
