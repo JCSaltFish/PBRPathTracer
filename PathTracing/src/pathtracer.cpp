@@ -227,6 +227,8 @@ void PathTracer::RenderFrame()
 		for (int i = 0; i < mResolution.x * mResolution.y * 3; i++)
 			mTotalImg[i] = 0.0f;
 		mNeedReset = false;
+        mSamples = 0;
+
 	}
 
 	mSamples++;
