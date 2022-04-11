@@ -93,7 +93,7 @@ void DrawGui()
     ImGui::SetNextWindowPos(ImVec2(wRender + 10, 10));
     ImGui::SetNextWindowSize(ImVec2(rightBarWidth - 10, hRender - 10));
     ImGui::Begin("Path Tracer");
-    //ImGui::SetWindowFontScale(2.0f);
+    ImGui::SetWindowFontScale(1.5f);
 
     ImGui::Text("Samples: %.i", pathTracer.GetSamples());
     ImGui::Text("Triangle Count: %.i", pathTracer.GetTriangleCount());
@@ -114,12 +114,6 @@ void DrawGui()
 			render = false;
 			timePause = glfwGetTime();
 		}
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Reset"))
-	{
-		pathTracer.ResetImage();
-		glfwSetTime(0.0); // reset timer
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Save"))
@@ -266,7 +260,7 @@ void InitializePathTracer()
 	m.baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
 	m.type = MaterialType::GLASS;
 	pathTracer.LoadMesh("sphere.obj.object", glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, -2.0f, -4.0f)), glm::vec3(0.3f)), m);
-
+	
 	// Floor
 	m.baseColor = glm::vec3(0.9f, 0.9f, 0.8f);
 	m.type = MaterialType::DIFFUSE;
@@ -348,14 +342,18 @@ int main()
             }
 
             /*int i = pathTracer.GetSamples();
-            if (i == 10 || i == 100 || i == 1000 || i == 10000) {
+            if (i == 10 || i == 200 || i == 500 || i == 1000) {
                 saveFile = true;
-            }*/
+            }
 
             if (saveFile) {
                 saveImage();
                 saveFile = false;
             }
+
+			if (i == 1000) {
+				break;
+			}*/
 		}
 
 	}
