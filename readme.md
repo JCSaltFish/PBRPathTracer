@@ -3,6 +3,7 @@
 Jed Wang jcsaltfish@gmail.com Angel Lam lam124@purdue.edu
 
 - Load and render obj models
+- Diffuse, specular, glossy and glass material BRDFs support
 - OpenMP acceleration
 - BVH acceleration
 
