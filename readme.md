@@ -12,6 +12,8 @@ https://github.com/Bly7/OBJ-Loader
 
 ![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt00.png)
 
+Check out our render and processing [results](https://github.com/JCSaltFish/PathTracing/blob/master/Results.pdf)
+
 ##
 
 ![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt01.png)
