@@ -4,7 +4,10 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+
 #include <glm/glm.hpp>
+
+#include "image.h"
 
 const float EPS = 0.001f;
 const float INF = (float)0xFFFF;
@@ -19,20 +22,14 @@ struct AABB
 	bool Intersect(glm::vec3 ro, glm::vec3 rd);
 };
 
-enum class MaterialType
+struct TriangleBarycentricInfo
 {
-	DIFFUSE,
-	SPECULAR,
-	GLOSSY,
-	GLASS
-};
-
-struct Material
-{
-	MaterialType type = MaterialType::DIFFUSE;
-	glm::vec3 baseColor = glm::vec3(0.0f);
-	float roughness = 0.0f;
-	glm::vec3 emissive = glm::vec3(0.0f);
+	glm::vec3 v0;
+	glm::vec3 v1;
+	float d00 = 0.0f;
+	float d01 = 0.0f;
+	float d11 = 0.0f;
+	float invDenom = 0.0f;
 };
 
 struct Triangle
@@ -40,8 +37,27 @@ struct Triangle
 	glm::vec3 v1;
 	glm::vec3 v2;
 	glm::vec3 v3;
+
+	glm::vec3 n1;
+	glm::vec3 n2;
+	glm::vec3 n3;
+
+	glm::vec2 uv1;
+	glm::vec2 uv2;
+	glm::vec2 uv3;
+
 	glm::vec3 normal;
-	Material material;
+	glm::vec3 tangent;
+	glm::vec3 bitangent;
+
+	TriangleBarycentricInfo barycentricInfo;
+
+	bool smoothing = false;
+
+	int objectId = -1;
+	int elementId = -1;
+
+	void Init();
 };
 
 class BVHNode

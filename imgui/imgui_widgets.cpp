@@ -375,6 +375,40 @@ void ImGui::LabelTextV(const char* label, const char* fmt, va_list args)
         RenderText(ImVec2(value_bb.Max.x + style.ItemInnerSpacing.x, value_bb.Min.y + style.FramePadding.y), label);
 }
 
+void ImGui::TextClipped(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    TextClippedV(fmt, args);
+    va_end(args);
+}
+
+void ImGui::TextClippedV(const char* fmt, va_list args)
+{
+    ImGuiWindow* window = GetCurrentWindow();
+    if (window->SkipItems)
+        return;
+
+    ImGuiContext& g = *GImGui;
+    const ImGuiStyle& style = g.Style;
+    const float w = CalcItemWidth();
+
+    const char* value_text_begin = &g.TempBuffer[0];
+    const char* value_text_end = value_text_begin + ImFormatStringV(g.TempBuffer, IM_ARRAYSIZE(g.TempBuffer), fmt, args);
+    const ImVec2 value_size = CalcTextSize(value_text_begin, value_text_end, false);
+    const ImVec2 label_size = ImVec2(0.0f, 0.0f);
+
+    const ImVec2 pos = window->DC.CursorPos;
+    const ImRect value_bb(pos, pos + ImVec2(w, value_size.y + style.FramePadding.y * 2));
+    const ImRect total_bb(pos, pos + ImVec2(w + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), ImMax(value_size.y, label_size.y) + style.FramePadding.y * 2));
+    ItemSize(total_bb, style.FramePadding.y);
+    if (!ItemAdd(total_bb, 0))
+        return;
+
+    // Render
+    RenderTextClipped(value_bb.Min + style.FramePadding, value_bb.Max, value_text_begin, value_text_end, &value_size, ImVec2(0.0f, 0.0f));
+}
+
 void ImGui::BulletText(const char* fmt, ...)
 {
     va_list args;
@@ -711,6 +745,54 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
     return pressed;
 }
 
+bool ImGui::IconButtonEx(const char* icon, const char* label, const ImVec4& icon_col, const ImVec2& size_arg, ImGuiButtonFlags flags)
+{
+    ImGuiWindow* window = GetCurrentWindow();
+    if (window->SkipItems)
+        return false;
+
+    ImGuiContext& g = *GImGui;
+    const ImGuiStyle& style = g.Style;
+    const ImGuiID id = window->GetID(label);
+    const ImVec2 label_size = CalcTextSize(label, NULL, true);
+    const ImVec2 icon_size = CalcTextSize(icon, NULL, true);
+
+    ImVec2 pos = window->DC.CursorPos;
+    if ((flags & ImGuiButtonFlags_AlignTextBaseLine) && style.FramePadding.y < window->DC.CurrLineTextBaseOffset) // Try to vertically align buttons that are smaller/have no padding so that text baseline matches (bit hacky, since it shouldn't be a flag)
+        pos.y += window->DC.CurrLineTextBaseOffset - style.FramePadding.y;
+    ImVec2 size = CalcItemSize(size_arg, label_size.x + icon_size.x + style.FramePadding.x * 2.0f, label_size.y + style.FramePadding.y * 2.0f);
+
+    const ImRect bb(pos, pos + size);
+    ItemSize(size, style.FramePadding.y);
+    if (!ItemAdd(bb, id))
+        return false;
+
+    if (g.LastItemData.InFlags & ImGuiItemFlags_ButtonRepeat)
+        flags |= ImGuiButtonFlags_Repeat;
+
+    bool hovered, held;
+    bool pressed = ButtonBehavior(bb, id, &hovered, &held, flags);
+
+    // Render
+    const ImU32 col = GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
+    RenderNavHighlight(bb, id);
+    RenderFrame(bb.Min, bb.Max, col, true, style.FrameRounding);
+
+    if (g.LogEnabled)
+        LogSetNextTextDecoration("[", "]");
+    PushStyleColor(ImGuiCol_Text, icon_col);
+    RenderTextClipped(bb.Min + style.FramePadding, bb.Max - style.FramePadding - ImVec2(label_size.x, 0), icon, NULL, &icon_size, style.ButtonTextAlign, &bb);
+    PopStyleColor();
+    RenderTextClipped(bb.Min + style.FramePadding + ImVec2(icon_size.x, 0), bb.Max - style.FramePadding, label, NULL, &label_size, style.ButtonTextAlign, &bb);
+
+    // Automatically close popups
+    //if (pressed && !(flags & ImGuiButtonFlags_DontClosePopups) && (window->Flags & ImGuiWindowFlags_Popup))
+    //    CloseCurrentPopup();
+
+    IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
+    return pressed;
+}
+
 bool ImGui::Button(const char* label, const ImVec2& size_arg)
 {
     return ButtonEx(label, size_arg, ImGuiButtonFlags_None);
@@ -795,6 +877,46 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
 
     // Tweak 1: Shrink hit-testing area if button covers an abnormally large proportion of the visible region. That's in order to facilitate moving the window away. (#3825)
     // This may better be applied as a general hit-rect reduction mechanism for all widgets to ensure the area to move window is always accessible?
+    //const ImRect bb(pos, pos + ImVec2(g.FontSize, g.FontSize) + g.Style.FramePadding * 2.0f);
+    const ImRect bb(pos, pos + ImVec2(g.Style.FramePadding.x * 2.0f + g.FontSize, window->TitleBarHeight()));
+    ImRect bb_interact = bb;
+    const float area_to_visible_ratio = window->OuterRectClipped.GetArea() / bb.GetArea();
+    if (area_to_visible_ratio < 1.5f)
+        bb_interact.Expand(ImFloor(bb_interact.GetSize() * -0.25f));
+
+    // Tweak 2: We intentionally allow interaction when clipped so that a mechanical Alt,Right,Activate sequence can always close a window.
+    // (this isn't the regular behavior of buttons, but it doesn't affect the user much because navigation tends to keep items visible).
+    bool is_clipped = !ItemAdd(bb_interact, id);
+
+    bool hovered, held;
+    bool pressed = ButtonBehavior(bb_interact, id, &hovered, &held);
+    if (is_clipped)
+        return pressed;
+
+    // Render
+    // FIXME: Clarify this mess
+    ImU32 col = GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered);
+    ImVec2 center = bb.GetCenter();
+    if (hovered)
+        //window->DrawList->AddCircleFilled(center, ImMax(2.0f, g.FontSize * 0.5f + 1.0f), col, 12);
+        window->DrawList->AddRectFilled(pos, bb.Max, col);
+
+    float cross_extent = g.FontSize * 0.5f * 0.7071f - 1.0f;
+    ImU32 cross_col = GetColorU32(ImGuiCol_Text);
+    center -= ImVec2(0.5f, 0.5f);
+    window->DrawList->AddLine(center + ImVec2(+cross_extent, +cross_extent), center + ImVec2(-cross_extent, -cross_extent), cross_col, 1.0f);
+    window->DrawList->AddLine(center + ImVec2(+cross_extent, -cross_extent), center + ImVec2(-cross_extent, +cross_extent), cross_col, 1.0f);
+
+    return pressed;
+}
+
+bool ImGui::TabCloseButton(ImGuiID id, const ImVec2& pos)
+{
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = g.CurrentWindow;
+
+    // Tweak 1: Shrink hit-testing area if button covers an abnormally large proportion of the visible region. That's in order to facilitate moving the window away. (#3825)
+    // This may better be applied as a general hit-rect reduction mechanism for all widgets to ensure the area to move window is always accessible?
     const ImRect bb(pos, pos + ImVec2(g.FontSize, g.FontSize) + g.Style.FramePadding * 2.0f);
     ImRect bb_interact = bb;
     const float area_to_visible_ratio = window->OuterRectClipped.GetArea() / bb.GetArea();
@@ -815,9 +937,9 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
     ImU32 col = GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered);
     ImVec2 center = bb.GetCenter();
     if (hovered)
-        window->DrawList->AddCircleFilled(center, ImMax(2.0f, g.FontSize * 0.5f + 1.0f), col, 12);
+        window->DrawList->AddCircleFilled(center, ImMax(2.0f, g.FontSize * 0.4f + 1.0f), col, 12);
 
-    float cross_extent = g.FontSize * 0.5f * 0.7071f - 1.0f;
+    float cross_extent = g.FontSize * 0.4f * 0.7071f - 1.0f;
     ImU32 cross_col = GetColorU32(ImGuiCol_Text);
     center -= ImVec2(0.5f, 0.5f);
     window->DrawList->AddLine(center + ImVec2(+cross_extent, +cross_extent), center + ImVec2(-cross_extent, -cross_extent), cross_col, 1.0f);
@@ -840,9 +962,10 @@ bool ImGui::CollapseButton(ImGuiID id, const ImVec2& pos)
     ImU32 bg_col = GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
     ImU32 text_col = GetColorU32(ImGuiCol_Text);
     ImVec2 center = bb.GetCenter();
-    if (hovered || held)
-        window->DrawList->AddCircleFilled(center/*+ ImVec2(0.0f, -0.5f)*/, g.FontSize * 0.5f + 1.0f, bg_col, 12);
-    RenderArrow(window->DrawList, bb.Min + g.Style.FramePadding, text_col, window->Collapsed ? ImGuiDir_Right : ImGuiDir_Down, 1.0f);
+    //if (hovered || held)
+        //window->DrawList->AddCircleFilled(center/*+ ImVec2(0.0f, -0.5f)*/, g.FontSize * 0.5f + 1.0f, bg_col, 12);
+    ImVec2 offset = ImVec2(0.0f, window->TitleBarHeight() * 0.2f);
+    RenderArrow(window->DrawList, bb.Min + g.Style.FramePadding + offset, text_col, window->Collapsed ? ImGuiDir_Right : ImGuiDir_Down, 0.7f);
 
     // Switch to moving the window after mouse is moved beyond the initial drag threshold
     if (IsItemActive() && IsMouseDragging(0))
@@ -1069,6 +1192,11 @@ bool ImGui::ImageButton(ImTextureID user_texture_id, const ImVec2& size, const I
     return ImageButtonEx(id, user_texture_id, size, uv0, uv1, padding, bg_col, tint_col);
 }
 
+bool ImGui::IconButton(const char* icon, const char* label, const ImVec4& icon_col, const ImVec2& size_arg)
+{
+    return IconButtonEx(icon, label, icon_col, size_arg, ImGuiButtonFlags_None);
+}
+
 bool ImGui::Checkbox(const char* label, bool* v)
 {
     ImGuiWindow* window = GetCurrentWindow();
@@ -1080,7 +1208,7 @@ bool ImGui::Checkbox(const char* label, bool* v)
     const ImGuiID id = window->GetID(label);
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
 
-    const float square_sz = GetFrameHeight();
+    const float square_sz = GetFrameHeight() * 0.9f;
     const ImVec2 pos = window->DC.CursorPos;
     const ImRect total_bb(pos, pos + ImVec2(square_sz + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), label_size.y + style.FramePadding.y * 2.0f));
     ItemSize(total_bb, style.FramePadding.y);
@@ -1098,9 +1226,11 @@ bool ImGui::Checkbox(const char* label, bool* v)
         MarkItemEdited(id);
     }
 
+    ImVec2 offset = ImVec2(0, GetFrameHeight() * 0.05f);
     const ImRect check_bb(pos, pos + ImVec2(square_sz, square_sz));
+    const ImRect check_bbb(pos + offset, pos + offset + ImVec2(square_sz, square_sz));
     RenderNavHighlight(total_bb, id);
-    RenderFrame(check_bb.Min, check_bb.Max, GetColorU32((held && hovered) ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), true, style.FrameRounding);
+    RenderFrame(check_bbb.Min, check_bbb.Max, GetColorU32((held && hovered) ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), true, style.FrameRounding);
     ImU32 check_col = GetColorU32(ImGuiCol_CheckMark);
     bool mixed_value = (g.LastItemData.InFlags & ImGuiItemFlags_MixedValue) != 0;
     if (mixed_value)
@@ -1112,7 +1242,7 @@ bool ImGui::Checkbox(const char* label, bool* v)
     }
     else if (*v)
     {
-        const float pad = ImMax(1.0f, IM_FLOOR(square_sz / 6.0f));
+        const float pad = ImMax(1.0f, IM_FLOOR(square_sz / 4.0f));
         RenderCheckMark(window->DrawList, check_bb.Min + ImVec2(pad, pad), check_col, square_sz - pad * 2.0f);
     }
 
@@ -1197,7 +1327,7 @@ bool ImGui::RadioButton(const char* label, bool active)
     ImVec2 center = check_bb.GetCenter();
     center.x = IM_ROUND(center.x);
     center.y = IM_ROUND(center.y);
-    const float radius = (square_sz - 1.0f) * 0.5f;
+    const float radius = (square_sz - 1.0f) * 0.25f;
 
     bool hovered, held;
     bool pressed = ButtonBehavior(total_bb, id, &hovered, &held);
@@ -1209,7 +1339,7 @@ bool ImGui::RadioButton(const char* label, bool active)
     if (active)
     {
         const float pad = ImMax(1.0f, IM_FLOOR(square_sz / 6.0f));
-        window->DrawList->AddCircleFilled(center, radius - pad, GetColorU32(ImGuiCol_CheckMark), 16);
+        window->DrawList->AddCircleFilled(center, radius, GetColorU32(ImGuiCol_Text), 16);
     }
 
     if (style.FrameBorderSize > 0.0f)
@@ -1439,6 +1569,19 @@ void ImGui::Separator()
     SeparatorEx(flags);
 }
 
+void ImGui::VerticalSeparator()
+{
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = g.CurrentWindow;
+    if (window->SkipItems)
+        return;
+
+    // Those flags should eventually be overridable by the user
+    ImGuiSeparatorFlags flags = ImGuiSeparatorFlags_Vertical;
+    flags |= ImGuiSeparatorFlags_SpanAllColumns; // NB: this only applies to legacy Columns() api as they relied on Separator() a lot.
+    SeparatorEx(flags);
+}
+
 // Using 'hover_visibility_delay' allows us to hide the highlight and mouse cursor for a short time, which can be convenient to reduce visual noise.
 bool ImGui::SplitterBehavior(const ImRect& bb, ImGuiID id, ImGuiAxis axis, float* size1, float* size2, float min_size1, float min_size2, float hover_extend, float hover_visibility_delay)
 {
@@ -1582,7 +1725,7 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
     const ImGuiID id = window->GetID(label);
     IM_ASSERT((flags & (ImGuiComboFlags_NoArrowButton | ImGuiComboFlags_NoPreview)) != (ImGuiComboFlags_NoArrowButton | ImGuiComboFlags_NoPreview)); // Can't use both flags together
 
-    const float arrow_size = (flags & ImGuiComboFlags_NoArrowButton) ? 0.0f : GetFrameHeight();
+    const float arrow_size = (flags & ImGuiComboFlags_NoArrowButton) ? 0.0f : GetFrameHeight() * 1.6f;
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
     const float w = (flags & ImGuiComboFlags_NoPreview) ? arrow_size : CalcItemWidth();
     const ImRect bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
@@ -1612,9 +1755,9 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
     {
         ImU32 bg_col = GetColorU32((popup_open || hovered) ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
         ImU32 text_col = GetColorU32(ImGuiCol_Text);
-        window->DrawList->AddRectFilled(ImVec2(value_x2, bb.Min.y), bb.Max, bg_col, style.FrameRounding, (w <= arrow_size) ? ImDrawFlags_RoundCornersAll : ImDrawFlags_RoundCornersRight);
+        window->DrawList->AddRectFilled(ImVec2(value_x2, bb.Min.y), bb.Max, frame_col, style.FrameRounding, (w <= arrow_size) ? ImDrawFlags_RoundCornersAll : ImDrawFlags_RoundCornersRight);
         if (value_x2 + arrow_size - style.FramePadding.x <= bb.Max.x)
-            RenderArrow(window->DrawList, ImVec2(value_x2 + style.FramePadding.y, bb.Min.y + style.FramePadding.y), text_col, ImGuiDir_Down, 1.0f);
+            RenderWiredArrow(window->DrawList, ImVec2(value_x2 + arrow_size * 0.25f, bb.Min.y - style.WindowPadding.y + style.FramePadding.y + 0.75), text_col, ImGuiDir_Down, 1.0f);
     }
     RenderFrameBorder(bb.Min, bb.Max, style.FrameRounding);
 
@@ -1690,7 +1833,7 @@ bool ImGui::BeginComboPopup(ImGuiID popup_id, const ImRect& bb, ImGuiComboFlags 
 
     // We don't use BeginPopupEx() solely because we have a custom name string, which we could make an argument to BeginPopupEx()
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_Popup | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
-    PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(g.Style.FramePadding.x, g.Style.WindowPadding.y)); // Horizontally align ourselves with the framed text
+    PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, g.Style.WindowPadding.y)); // Horizontally align ourselves with the framed text
     bool ret = Begin(name, NULL, window_flags);
     PopStyleVar();
     if (!ret)
@@ -4043,7 +4186,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
     const bool input_requested_by_tabbing = (item_status_flags & ImGuiItemStatusFlags_FocusedByTabbing) != 0;
     const bool input_requested_by_nav = (g.ActiveId != id) && ((g.NavActivateInputId == id) || (g.NavActivateId == id && g.NavInputSource == ImGuiInputSource_Keyboard));
 
-    const bool user_clicked = hovered && io.MouseClicked[0];
+    const bool user_clicked = hovered && (io.MouseClicked[0] || io.MouseClicked[1]);
     const bool user_scroll_finish = is_multiline && state != NULL && g.ActiveId == 0 && g.ActiveIdPreviousFrame == GetWindowScrollbarID(draw_window, ImGuiAxis_Y);
     const bool user_scroll_active = is_multiline && state != NULL && g.ActiveId == GetWindowScrollbarID(draw_window, ImGuiAxis_Y);
     bool clear_active_id = false;
@@ -4135,7 +4278,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
         ClearActiveID();
 
     // Release focus when we click outside
-    if (g.ActiveId == id && io.MouseClicked[0] && !init_state && !init_make_active) //-V560
+    if (g.ActiveId == id && io.MouseClicked[0] && !init_state && !init_make_active && !io.MouseInContextMenu) //-V560
         clear_active_id = true;
 
     // Lock the decision of whether we are going to take the path displaying the cursor or selection
@@ -6217,7 +6360,7 @@ bool ImGui::Selectable(const char* label, bool selected, ImGuiSelectableFlags fl
         size.x = ImMax(label_size.x, max_x - min_x);
 
     // Text stays at the submission position, but bounding box may be extended on both sides
-    const ImVec2 text_min = pos;
+    const ImVec2 text_min = pos + ImVec2(g.Style.FramePadding.x * 0.5f, 0.0f);
     const ImVec2 text_max(min_x + size.x, pos.y + size.y);
 
     // Selectables are meant to be tightly packed together with no click-gap, so we extend their box to cover spacing between selectable.
@@ -6971,10 +7114,10 @@ bool ImGui::BeginMenuEx(const char* label, const char* icon, bool enabled)
         float extra_w = ImMax(0.0f, GetContentRegionAvail().x - min_w);
         ImVec2 text_pos(window->DC.CursorPos.x + offsets->OffsetLabel, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
         pressed = Selectable("", menu_is_open, ImGuiSelectableFlags_NoHoldingActiveID | ImGuiSelectableFlags_SelectOnClick | ImGuiSelectableFlags_DontClosePopups | ImGuiSelectableFlags_SpanAvailWidth, ImVec2(min_w, 0.0f));
-        RenderText(text_pos, label);
+        RenderText(text_pos + ImVec2(g.Style.FramePadding.x, 0.0f), label);
         if (icon_w > 0.0f)
-            RenderText(pos + ImVec2(offsets->OffsetIcon, 0.0f), icon);
-        RenderArrow(window->DrawList, pos + ImVec2(offsets->OffsetMark + extra_w + g.FontSize * 0.30f, 0.0f), GetColorU32(ImGuiCol_Text), ImGuiDir_Right);
+            RenderText(pos + ImVec2(offsets->OffsetIcon + g.Style.FramePadding.x, 0.0f), icon);
+        RenderWiredArrow(window->DrawList, pos + ImVec2(offsets->OffsetMark + extra_w + g.FontSize * 0.30f, 0.0f), GetColorU32(ImGuiCol_Text), ImGuiDir_Right);
     }
     if (!enabled)
         EndDisabled();
@@ -7143,13 +7286,13 @@ bool ImGui::MenuItemEx(const char* label, const char* icon, const char* shortcut
         float min_w = window->DC.MenuColumns.DeclColumns(icon_w, label_size.x, shortcut_w, checkmark_w); // Feedback for next frame
         float stretch_w = ImMax(0.0f, GetContentRegionAvail().x - min_w);
         pressed = Selectable("", false, selectable_flags | ImGuiSelectableFlags_SpanAvailWidth, ImVec2(min_w, 0.0f));
-        RenderText(pos + ImVec2(offsets->OffsetLabel, 0.0f), label);
+        RenderText(pos + ImVec2(offsets->OffsetLabel + g.Style.FramePadding.x, 0.0f), label);
         if (icon_w > 0.0f)
-            RenderText(pos + ImVec2(offsets->OffsetIcon, 0.0f), icon);
+            RenderText(pos + ImVec2(offsets->OffsetIcon + g.Style.FramePadding.x, 0.0f), icon);
         if (shortcut_w > 0.0f)
         {
             PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
-            RenderText(pos + ImVec2(offsets->OffsetShortcut + stretch_w, 0.0f), shortcut, NULL, false);
+            RenderText(pos + ImVec2(offsets->OffsetShortcut + stretch_w + g.Style.FramePadding.x, 0.0f), shortcut, NULL, false);
             PopStyleColor();
         }
         if (selected)
@@ -7173,6 +7316,22 @@ bool ImGui::MenuItem(const char* label, const char* shortcut, bool selected, boo
 bool ImGui::MenuItem(const char* label, const char* shortcut, bool* p_selected, bool enabled)
 {
     if (MenuItemEx(label, NULL, shortcut, p_selected ? *p_selected : false, enabled))
+    {
+        if (p_selected)
+            *p_selected = !*p_selected;
+        return true;
+    }
+    return false;
+}
+
+bool ImGui::MenuItem(const char* label, const char* icon, const char* shortcut, bool selected, bool enabled)
+{
+    return MenuItemEx(label, icon, shortcut, selected, enabled);
+}
+
+bool ImGui::MenuItem(const char* label, const char* icon, const char* shortcut, bool* p_selected, bool enabled)
+{
+    if (MenuItemEx(label, icon, shortcut, p_selected ? *p_selected : false, enabled))
     {
         if (p_selected)
             *p_selected = !*p_selected;
@@ -7557,7 +7716,7 @@ static void ImGui::TabBarLayout(ImGuiTabBar* tab_bar)
         {
             ImGuiTabItem* tab = &tab_bar->Tabs[section_tab_index + tab_n];
             tab->Offset = tab_offset;
-            tab_offset += tab->Width + (tab_n < section->TabCount - 1 ? g.Style.ItemInnerSpacing.x : 0.0f);
+            tab_offset += tab->Width + (tab_n < section->TabCount - 1 ? g.Style.ItemInnerSpacing.x * 0.5f : 0.0f);
         }
         tab_bar->WidthAllTabs += ImMax(section->Width + section->Spacing, 0.0f);
         tab_offset += section->Spacing;
@@ -8188,7 +8347,7 @@ ImVec2 ImGui::TabItemCalcSize(const char* label, bool has_close_button)
 {
     ImGuiContext& g = *GImGui;
     ImVec2 label_size = CalcTextSize(label, NULL, true);
-    ImVec2 size = ImVec2(label_size.x + g.Style.FramePadding.x, label_size.y + g.Style.FramePadding.y * 2.0f);
+    ImVec2 size = ImVec2(label_size.x + g.Style.FramePadding.x * 2.0f, label_size.y + g.Style.FramePadding.y * 2.0f);
     if (has_close_button)
         size.x += g.Style.FramePadding.x + (g.Style.ItemInnerSpacing.x + g.FontSize); // We use Y intentionally to fit the close button circle.
     else
@@ -8275,7 +8434,7 @@ void ImGui::TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb, 
     {
         ImGuiLastItemData last_item_backup = g.LastItemData;
         PushStyleVar(ImGuiStyleVar_FramePadding, frame_padding);
-        if (CloseButton(close_button_id, button_pos))
+        if (TabCloseButton(close_button_id, button_pos))
             close_button_pressed = true;
         PopStyleVar();
         g.LastItemData = last_item_backup;

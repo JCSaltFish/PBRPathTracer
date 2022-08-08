@@ -1,11 +1,14 @@
 #define _USE_MATH_DEFINES
+#include <sstream>
 #include <math.h>
+
 #include <omp.h>
 
-#include "pathtracer.h"
-#include "OBJ_Loader.h"
+#include <tiny_obj_loader.h>
 
-PathTracer::PathTracer()
+#include "pathtracer.h"
+
+PathTracer::PathTracer() : mRng(std::random_device()())
 {
 	mOutImg = 0;
 	mTotalImg = 0;
@@ -18,6 +21,7 @@ PathTracer::PathTracer()
 
 	mSamples = 0;
 	mNeedReset = false;
+	mExit = false;
 }
 
 PathTracer::~PathTracer()
@@ -27,54 +31,169 @@ PathTracer::~PathTracer()
 
 	if (mBvh)
 		delete mBvh;
+
+	for (auto texture : mLoadedTextures)
+		delete texture;
 }
 
-void PathTracer::LoadMesh(std::string file, glm::mat4 model, Material material)
+void PathTracer::LoadObject(std::string file, glm::mat4 model)
 {
-	objl::Loader loader;
-	if (loader.LoadFile(file))
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warn, err;
+	if (tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, file.c_str()))
 	{
-		for (int i = 0; i < loader.LoadedIndices.size(); i += 3)
+		int nameStartIndex = file.find_last_of('/') + 1;
+		if (nameStartIndex > file.size() - 1)
+			nameStartIndex = 0;
+		int nameEndIndex = file.find_last_of(".");
+		if (nameEndIndex == std::string::npos)
+			nameEndIndex = file.size() - 1;
+		std::string objName = file.substr(nameStartIndex, nameEndIndex - nameStartIndex);
+		PathTracerLoader::Object obj(objName);
+
+		for (int i = 0; i < shapes.size(); i++)
 		{
-			Triangle t;
-			int index = loader.LoadedIndices[i];
-			t.v1 = glm::vec3(loader.LoadedVertices[index].Position.X,
-				loader.LoadedVertices[index].Position.Y,
-				loader.LoadedVertices[index].Position.Z);
-			t.v1 = glm::vec3(model * glm::vec4(t.v1, 1.0f));
+			std::string elementName = shapes[i].name;
+			PathTracerLoader::Element element(elementName);
+			obj.elements.push_back(element);
 
-			index = loader.LoadedIndices[i + 1];
-			t.v2 = glm::vec3(loader.LoadedVertices[index].Position.X,
-				loader.LoadedVertices[index].Position.Y,
-				loader.LoadedVertices[index].Position.Z);
-			t.v2 = glm::vec3(model * glm::vec4(t.v2, 1.0f));
+			for (int j = 0; j < shapes[i].mesh.num_face_vertices.size(); j++)
+			{
+				if (shapes[i].mesh.num_face_vertices[j] != 3)
+					continue;
 
-			index = loader.LoadedIndices[i + 2];
-			t.v3 = glm::vec3(loader.LoadedVertices[index].Position.X,
-				loader.LoadedVertices[index].Position.Y,
-				loader.LoadedVertices[index].Position.Z);
-			t.v3 = glm::vec3(model * glm::vec4(t.v3, 1.0f));
+				Triangle t;
 
-			// normal
-			glm::vec3 e1 = glm::normalize(t.v2 - t.v1);
-			glm::vec3 e2 = glm::normalize(t.v3 - t.v1);
-			t.normal = glm::normalize(glm::cross(e1, e2));
+				int vi = shapes[i].mesh.indices[j * 3].vertex_index;
+				int ti = shapes[i].mesh.indices[j * 3].texcoord_index;
+				int ni = shapes[i].mesh.indices[j * 3].normal_index;
+				t.v1 = glm::vec3(-attrib.vertices[3 * vi],
+					attrib.vertices[3 * vi + 1],
+					attrib.vertices[3 * vi + 2]);
+				t.v1 = glm::vec3(model * glm::vec4(t.v1, 1.0f));
+				if (attrib.normals.size() != 0)
+				{
+					t.n1 = glm::vec3(-attrib.normals[3 * ni],
+						attrib.normals[3 * ni + 1],
+						attrib.normals[3 * ni + 2]);
+					t.n1 = glm::vec3(model * glm::vec4(t.n1, 0.0f));
+				}
+				if (attrib.texcoords.size() != 0)
+				{
+					t.uv1 = glm::vec2(attrib.texcoords[2 * ti],
+						1.0f - attrib.texcoords[2 * ti + 1]);
+				}
 
-			t.material = material;
-			mTriangles.push_back(t);
+				vi = shapes[i].mesh.indices[j * 3 + 1].vertex_index;
+				ti = shapes[i].mesh.indices[j * 3 + 1].texcoord_index;
+				ni = shapes[i].mesh.indices[j * 3 + 1].normal_index;
+				t.v2 = glm::vec3(-attrib.vertices[3 * vi],
+					attrib.vertices[3 * vi + 1],
+					attrib.vertices[3 * vi + 2]);
+				t.v2 = glm::vec3(model * glm::vec4(t.v2, 1.0f));
+				if (attrib.normals.size() != 0)
+				{
+					t.n2 = glm::vec3(-attrib.normals[3 * ni],
+						attrib.normals[3 * ni + 1],
+						attrib.normals[3 * ni + 2]);
+					t.n2 = glm::vec3(model * glm::vec4(t.n2, 0.0f));
+				}
+				if (attrib.texcoords.size() != 0)
+					t.uv2 = glm::vec2(attrib.texcoords[2 * ti],
+						1.0f - attrib.texcoords[2 * ti + 1]);
+
+				vi = shapes[i].mesh.indices[j * 3 + 2].vertex_index;
+				ti = shapes[i].mesh.indices[j * 3 + 2].texcoord_index;
+				ni = shapes[i].mesh.indices[j * 3 + 2].normal_index;
+				t.v3 = glm::vec3(-attrib.vertices[3 * vi],
+					attrib.vertices[3 * vi + 1],
+					attrib.vertices[3 * vi + 2]);
+				t.v3 = glm::vec3(model * glm::vec4(t.v3, 1.0f));
+				if (attrib.normals.size() != 0)
+				{
+					t.n3 = glm::vec3(-attrib.normals[3 * ni],
+						attrib.normals[3 * ni + 1],
+						attrib.normals[3 * ni + 2]);
+					t.n3 = glm::vec3(model * glm::vec4(t.n3, 0.0f));
+				}
+				if (attrib.texcoords.size() != 0)
+				{
+					t.uv3 = glm::vec2(attrib.texcoords[2 * ti],
+						1.0f - attrib.texcoords[2 * ti + 1]);
+				}
+
+				t.Init();
+
+				if (shapes[i].mesh.smoothing_group_ids.size() != 0)
+				{
+					if (shapes[i].mesh.smoothing_group_ids[j] != 0)
+						t.smoothing = true;
+				}
+
+				t.objectId = mLoadedObjects.size();
+				t.elementId = i;
+
+				mTriangles.push_back(t);
+			}
 		}
-
-		// Build BVH
-		if (mBvh)
-			delete mBvh;
-		mBvh = new BVHNode();
-		mBvh->Construct(mTriangles);
+		mLoadedObjects.push_back(obj);
 	}
+}
+
+void PathTracer::SetNormalTextureForElement(int objId, int elementId, std::string file)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.normalTexId != -1)
+		mLoadedTextures[mat.normalTexId]->Load(file);
+	else
+	{
+		Image* texture = new Image(file);
+		mat.normalTexId = mLoadedTextures.size();
+		mLoadedTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetMaterial(int objId, int elementId, Material& material)
+{
+	if (objId >= mLoadedObjects.size())
+		return;
+	if (elementId >= mLoadedObjects[objId].elements.size())
+		return;
+
+	material.normalTexId = mLoadedObjects[objId].elements[elementId].material.normalTexId;
+
+	mLoadedObjects[objId].elements[elementId].material = material;
+}
+
+void PathTracer::BuildBVH()
+{
+	if (mBvh)
+		delete mBvh;
+	mBvh = new BVHNode();
+	mBvh->Construct(mTriangles);
 }
 
 void PathTracer::ResetImage()
 {
 	mNeedReset = true;
+}
+
+void PathTracer::ClearScene()
+{
+	mTriangles.swap(std::vector<Triangle>());
+	mLoadedObjects.swap(std::vector<PathTracerLoader::Object>());
+	if (mBvh)
+		delete mBvh;
+	mBvh = 0;
+	for (auto texture : mLoadedTextures)
+		delete texture;
+	mLoadedTextures.swap(std::vector<Image*>());
+
+	if (mTotalImg)
+		delete[] mTotalImg;
+	mTotalImg = 0;
 }
 
 void PathTracer::SetOutImage(GLubyte* out)
@@ -86,6 +205,11 @@ void PathTracer::SetResolution(glm::ivec2 res)
 {
 	mResolution = res;
 	mTotalImg = new float[res.x * res.y * 3];
+}
+
+std::vector<PathTracerLoader::Object> PathTracer::GetLoadedObjects()
+{
+	return mLoadedObjects;
 }
 
 glm::ivec2 PathTracer::GetResolution()
@@ -132,23 +256,65 @@ int PathTracer::GetSamples()
 	return mSamples;
 }
 
-float PathTracer::Rand(glm::vec2 co, float& seed)
+float PathTracer::Rand()
 {
-	seed++;
-	return glm::fract(sinf(seed / mSamples * glm::dot(co, glm::vec2(12.9898f, 78.233f))) * 43758.5453f);
+	std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+	return dis(mRng);
 }
 
-glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float& randSeed, int depth, bool inside)
+glm::vec2 PathTracer::GetUV(glm::vec3& p, Triangle& t)
+{
+	glm::vec3 v2 = p - t.v1;
+	float d20 = glm::dot(v2, t.barycentricInfo.v0);
+	float d21 = glm::dot(v2, t.barycentricInfo.v1);
+	
+	float alpha = (t.barycentricInfo.d11 * d20 - t.barycentricInfo.d01 * d21) *
+		t.barycentricInfo.invDenom;
+	float beta = (t.barycentricInfo.d00 * d21 - t.barycentricInfo.d01 * d20) *
+		t.barycentricInfo.invDenom;
+
+	return (1.0f - alpha - beta) * t.uv1 + alpha * t.uv2 + beta * t.uv3;
+}
+
+glm::vec3 PathTracer::GetSmoothNormal(glm::vec3& p, Triangle& t)
+{
+	glm::vec3 v2 = p - t.v1;
+	float d20 = glm::dot(v2, t.barycentricInfo.v0);
+	float d21 = glm::dot(v2, t.barycentricInfo.v1);
+
+	float alpha = (t.barycentricInfo.d11 * d20 - t.barycentricInfo.d01 * d21) *
+		t.barycentricInfo.invDenom;
+	float beta = (t.barycentricInfo.d00 * d21 - t.barycentricInfo.d01 * d20) *
+		t.barycentricInfo.invDenom;
+
+	glm::vec3 n = (1.0f - alpha - beta) * t.n1 + alpha * t.n2 + beta * t.n3;
+	glm::vec3 res = glm::normalize(glm::vec3(n.x, -n.y, n.z));
+	return glm::normalize(n);
+}
+
+glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth, bool inside)
 {
 	float d = 0.0f;
 	Triangle t;
 	if (mBvh->Hit(ro, rd, t, d))
 	{
-		Material mat = t.material;
-		glm::vec3 n = t.normal;
+		Material mat = mLoadedObjects[t.objectId].elements[t.elementId].material;
 		glm::vec3 p = ro + rd * d;
+		glm::vec2 uv = GetUV(p, t);
+		glm::vec3 n = t.normal;
+		if (t.smoothing)
+			n = GetSmoothNormal(p, t);
 		if (glm::dot(n, rd) > 0.0f)
 			n = -n;
+		if (mat.normalTexId != -1)
+		{
+			glm::mat3 TBN = glm::mat3(t.tangent, t.bitangent, n);
+			glm::vec3 nt = glm::vec3(mLoadedTextures[mat.normalTexId]->tex2D(uv)) * 2.0f - 1.0f;
+			if (nt.z < 0.0f)
+				nt = glm::vec3(nt.x, nt.y, 0.0f);
+			nt = glm::normalize(nt);
+			n = glm::normalize(TBN * nt);
+		}
 		p += n * EPS;
 
 		if (depth < mMaxDepth * 2)
@@ -158,8 +324,8 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 			float prob = glm::min(0.95f, glm::max(glm::max(mat.baseColor.x, mat.baseColor.y), mat.baseColor.z));
 			if (depth >= mMaxDepth)
 			{
-				if (glm::abs(Rand(raySeed, randSeed)) > prob)
-					return mat.emissive;
+				if (glm::abs(Rand()) > prob)
+					return mat.emissive * mat.emissiveIntensity;
 			}
 
 			glm::vec3 r = glm::reflect(rd, n);
@@ -172,7 +338,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 				glm::vec3 u = glm::abs(n.x) < 1.0f - EPS ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
 				u = glm::normalize(u);
 				glm::vec3 v = glm::normalize(glm::cross(u, n));
-				float w = Rand(raySeed, randSeed), theta = Rand(raySeed, randSeed);
+				float w = Rand(), theta = Rand();
 				// uniformly sampling on hemisphere
 				reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
 				reflectDir = glm::normalize(reflectDir);
@@ -183,7 +349,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 				glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
 				u = glm::normalize(u);
 				glm::vec3 v = glm::cross(u, r);
-				float w = Rand(raySeed, randSeed) * mat.roughness, theta = Rand(raySeed, randSeed);
+				float w = Rand() * mat.roughness, theta = Rand();
 				// wighted sampling on hemisphere
 				reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * r;
 			}
@@ -201,7 +367,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 				{
 					// Shilick's approximation of Fresnel's equation
 					float re = r0 + (1.0f - r0) * glm::pow(1.0f - c, 2.0f);
-					if (glm::abs(Rand(raySeed, randSeed)) < re)
+					if (glm::abs(Rand()) < re)
 						reflectDir = r;
 					else
 					{
@@ -212,7 +378,7 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 				}
 			}
 
-			return mat.emissive + Trace(p, reflectDir, raySeed, randSeed, depth, inside) * mat.baseColor;
+			return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside) * mat.baseColor;
 		}
 	}
 
@@ -221,13 +387,14 @@ glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, glm::vec2 raySeed, float
 
 void PathTracer::RenderFrame()
 {
+	mExit = false;
+
 	if (mNeedReset)
 	{
 		for (int i = 0; i < mResolution.x * mResolution.y * 3; i++)
 			mTotalImg[i] = 0.0f;
 		mNeedReset = false;
         mSamples = 0;
-
 	}
 
 	mSamples++;
@@ -256,12 +423,16 @@ void PathTracer::RenderFrame()
 	#pragma omp parallel for num_threads(numThreads)
 	for (int i = 0; i < mResolution.y; i++)
 	{
+		if (mExit)
+			break;
+
 		glm::vec3 pixel = topLeft - mCamUp * ((float)i * deltaY);
 		for (int j = 0; j < mResolution.x; j++)
 		{
 			glm::vec3 rayDir = glm::normalize(pixel - mCamPos);
 			float seed = 0.0f;
-			glm::vec3 color = Trace(mCamPos, rayDir, glm::vec2(i, j), seed);
+
+			glm::vec3 color = Trace(mCamPos, rayDir);
 
 			// Draw
 			int imgPixel = ((mResolution.y - 1 - i) * mResolution.x + j) * 3;
@@ -270,9 +441,12 @@ void PathTracer::RenderFrame()
 			mTotalImg[imgPixel + 1] += color.g;
 			mTotalImg[imgPixel + 2] += color.b;
 
-			glm::vec3 res = glm::vec3(mTotalImg[imgPixel] / mSamples,
-				mTotalImg[imgPixel + 1] / mSamples,
-				mTotalImg[imgPixel + 2] / mSamples);
+			glm::vec3 res = glm::vec3
+			(
+				mTotalImg[imgPixel] / (float)mSamples,
+				mTotalImg[imgPixel + 1] / (float)mSamples,
+				mTotalImg[imgPixel + 2] / (float)mSamples
+			);
 			res = glm::clamp(res, glm::vec3(0.0f), glm::vec3(1.0f));
 
 			mOutImg[imgPixel] = res.r * 255;
@@ -282,4 +456,9 @@ void PathTracer::RenderFrame()
 			pixel += camRight * deltaX;
 		}
 	}
+}
+
+void PathTracer::Exit()
+{
+	mExit = true;
 }

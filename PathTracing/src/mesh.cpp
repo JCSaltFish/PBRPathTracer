@@ -58,6 +58,40 @@ bool AABB::Intersect(glm::vec3 ro, glm::vec3 rd)
 	return true;
 }
 
+void Triangle::Init()
+{
+	// barycentric
+	barycentricInfo.v0 = v2 - v1;
+	barycentricInfo.v1 = v3 - v1;
+	barycentricInfo.d00 = glm::dot(barycentricInfo.v0, barycentricInfo.v0);
+	barycentricInfo.d01 = glm::dot(barycentricInfo.v0, barycentricInfo.v1);
+	barycentricInfo.d11 = glm::dot(barycentricInfo.v1, barycentricInfo.v1);
+	barycentricInfo.invDenom = 1.0f /
+		(barycentricInfo.d00 * barycentricInfo.d11 -
+			barycentricInfo.d01 * barycentricInfo.d01);
+
+	// TBN
+	glm::vec3 e1 = v2 - v1;
+	glm::vec3 e2 = v3 - v1;
+	glm::vec2 deltaUv1 = uv2 - uv1;
+	glm::vec2 deltaUv2 = uv3 - uv1;
+	float f = 1.0f / (deltaUv1.x * deltaUv2.y - deltaUv2.x * deltaUv1.y);
+
+	tangent.x = f * (deltaUv2.y * e1.x - deltaUv1.y * e2.x);
+	tangent.y = f * (deltaUv2.y * e1.y - deltaUv1.y * e2.y);
+	tangent.z = f * (deltaUv2.y * e1.z - deltaUv1.y * e2.z);
+
+	bitangent.x = f * (-deltaUv2.x * e1.x + deltaUv1.x * e2.x);
+	bitangent.y = f * (-deltaUv2.x * e1.y + deltaUv1.x * e2.y);
+	bitangent.z = f * (-deltaUv2.x * e1.z + deltaUv1.x * e2.z);
+
+	normal = glm::cross(e1, e2);
+
+	tangent = glm::normalize(tangent);
+	bitangent = glm::normalize(bitangent);
+	normal = glm::normalize(normal);
+}
+
 BVHNode::BVHNode()
 {
 	mLeft = 0;
