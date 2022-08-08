@@ -660,7 +660,7 @@ void Export()
 	exportFilePath += "_" + std::to_string(std::localtime(&t)->tm_hour);
 	exportFilePath += "_" + std::to_string(std::localtime(&t)->tm_min);
 	exportFilePath += "_" + std::to_string(std::localtime(&t)->tm_sec);
-	exportFilePath += ".txt";
+	exportFilePath += ".png";
 
 	const char* filterItems[1] = { "*.png" };
 	const char* filterDesc = "PNG (*.png)";
