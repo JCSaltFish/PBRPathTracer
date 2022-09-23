@@ -65,6 +65,7 @@ GLuint fbo = -1;
 GLuint rbo = -1;
 GLuint frameTex = -1;
 GLuint fboTex = -1;
+GLuint pickTex = -1;
 GLubyte* texData = 0;
 
 ImFont* bigIconFont = 0;
@@ -72,7 +73,7 @@ ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "1.0.0";
+const std::string version = "1.1.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -120,6 +121,17 @@ float timeElapsed = 0.0f;
 Previewer previewer;
 bool preview = true;
 
+bool viewportFocused = false;
+bool cameraMouseControl = false;
+double curPosDownX = 0.0;
+double curPosDownY = 0.0;
+glm::vec3 camRotDown;
+float moveSpeed = 3.0f;
+bool camMoveForward = false;
+bool camMoveBackward = false;
+bool camMoveLeft = false;
+bool camMoveRight = false;
+
 glm::vec3 previewBgColor = glm::vec3(0.0f);
 glm::vec3 previewHighlightColor = glm::vec3(0.9f, 0.9f, 0.1f);
 glm::vec3 previewSelectionColor = glm::vec3(0.1f, 0.7f, 0.9f);
@@ -128,6 +140,8 @@ std::string pwd_r = "";
 std::string pwd_w = "";
 
 int lastSelectedId = -1;
+int pickedObjId = -1;
+int pickedElementId = -1;
 
 bool editingInput = false;
 int undoCmd = -1;
@@ -1458,6 +1472,13 @@ void GuiRightBar()
 			if (objs[i].isSelected)
 				treeNodeFlags |= ImGuiTreeNodeFlags_Selected;
 
+			if (pickedObjId != -1)
+			{
+				if (pickedObjId == i)
+					ImGui::SetNextItemOpen(true);
+				else
+					ImGui::SetNextItemOpen(false);
+			}
 			bool nodeOpen = ImGui::TreeNodeEx(idStr.c_str(), treeNodeFlags, objs[i].name.c_str());
 			if (!highlightElement)
 				previewer.Highlight(i, ImGui::IsItemHovered());
@@ -1577,6 +1598,13 @@ void GuiRightBar()
 					idStr = "##element";
 					idStr += std::to_string(i) + "_" + std::to_string(j);
 
+					if (pickedObjId == i && pickedElementId != -1)
+					{
+						if (pickedElementId == j)
+							ImGui::SetNextItemOpen(true);
+						else
+							ImGui::SetNextItemOpen(false);
+					}
 					if (ImGui::TreeNodeEx(idStr.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth,
 						elementName.c_str()))
 					{
@@ -1737,6 +1765,8 @@ void GuiRightBar()
 				ImGui::TreePop();
 			}
 		}
+		pickedObjId = -1;
+		pickedElementId = -1;
 		if (selectedId != -1)
 		{
 			bool multiSelections = previewer.GetNumSelectedObjects() > 1;
@@ -1790,6 +1820,7 @@ void GuiMainViewport()
 		ImGuiWindowFlags_NoBringToFrontOnFocus);
 	ImGui::BeginChild("ViewportRender");
 	ImGui::Image((ImTextureID)fboTex, ImGui::GetWindowSize(), ImVec2(0, 1), ImVec2(1, 0));
+	viewportFocused = ImGui::IsItemHovered();
 	ImGui::EndChild();
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -1925,6 +1956,16 @@ void GuiSettingsWindow()
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(8, 8));
 		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.13f, 0.13f, 0.13f, 1.0f));
+
+		ImGui::Text("     Camera Navigation Speed");
+		ImGui::SameLine(250);
+		int iMoveSpeed = moveSpeed;
+		ImGui::SetNextItemWidth(150);
+		if (ImGui::SliderInt("##moveSpeed", &iMoveSpeed, 1, 10, "%d",
+			ImGuiSliderFlags_AlwaysClamp))
+			moveSpeed = iMoveSpeed;
+		GuiInputContextMenu();
+
 		float xPos = ImGui::GetCursorPosX();
 		ImGui::SetCursorPosX(250);
 		float v3[3]{};
@@ -2360,14 +2401,10 @@ void Display()
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	glViewport(0, 0, wRender, hRender);
 
 	if (preview)
 	{
-		glClearColor(previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 		glUseProgram(previewShader);
 
 		glm::vec3 eyePos = previewer.PreviewCameraPosition();
@@ -2379,40 +2416,60 @@ void Display()
 		int eyePos_loc = glGetUniformLocation(previewShader, "eyePos");
 		glUniform3fv(eyePos_loc, 1, glm::value_ptr(eyePos));
 
-		for (auto& obj : previewer.GetLoadedObjects())
+		int pass_loc = glGetUniformLocation(previewShader, "pass");
+		for (int pass = 0; pass < 2; pass++)
 		{
-			int M_loc = glGetUniformLocation(previewShader, "M");
-			glUniformMatrix4fv(M_loc, 1, false, glm::value_ptr(obj.Mpreview));
+			glUniform1i(pass_loc, pass);
+			glDrawBuffer(GL_COLOR_ATTACHMENT0 + pass);
+			if (pass == 0)
+				glClearColor(previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f);
+			else
+				glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			for (auto& element : obj.elements)
+			auto& objs = previewer.GetLoadedObjects();
+			for (int i = 0; i < objs.size(); i++)
 			{
-				glm::vec3 color = element.material.baseColor;
-				if (element.highlight)
-					color = previewHighlightColor;
-				else if (obj.isSelected)
-					color = previewSelectionColor;
-				int color_loc = glGetUniformLocation(previewShader, "color");
-				glUniform3fv(color_loc, 1, glm::value_ptr(color));
+				int objId_loc = glGetUniformLocation(previewShader, "objectId");
+				glUniform1i(objId_loc, i + 1);
 
-				glDisable(GL_TEXTURE_2D);
-				int normalMap_loc = glGetUniformLocation(previewShader, "normalMap");
-				glUniform1i(normalMap_loc, 0);
-				if (element.normalTexId != -1)
+				int M_loc = glGetUniformLocation(previewShader, "M");
+				glUniformMatrix4fv(M_loc, 1, false, glm::value_ptr(objs[i].Mpreview));
+
+				for (int j = 0; j < objs[i].elements.size(); j++)
 				{
-					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, element.normalTexId);
-					int normalTex_loc = glGetUniformLocation(previewShader, "normalTex");
-					glUniform1i(normalTex_loc, 0);
-					glUniform1i(normalMap_loc, 1);
-				}
+					int elementId_loc = glGetUniformLocation(previewShader, "elementId");
+					glUniform1i(elementId_loc, j + 1);
 
-				glBindVertexArray(element.vao);
-				glDrawArrays(GL_TRIANGLES, 0, 3 * element.numTriangles);
+					glm::vec3 color = objs[i].elements[j].material.baseColor;
+					if (objs[i].elements[j].highlight)
+						color = previewHighlightColor;
+					else if (objs[i].isSelected)
+						color = previewSelectionColor;
+					int color_loc = glGetUniformLocation(previewShader, "color");
+					glUniform3fv(color_loc, 1, glm::value_ptr(color));
+
+					glDisable(GL_TEXTURE_2D);
+					int normalMap_loc = glGetUniformLocation(previewShader, "normalMap");
+					glUniform1i(normalMap_loc, 0);
+					if (objs[i].elements[j].normalTexId != -1)
+					{
+						glActiveTexture(GL_TEXTURE0);
+						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].normalTexId);
+						int normalTex_loc = glGetUniformLocation(previewShader, "normalTex");
+						glUniform1i(normalTex_loc, 0);
+						glUniform1i(normalMap_loc, 1);
+					}
+
+					glBindVertexArray(objs[i].elements[j].vao);
+					glDrawArrays(GL_TRIANGLES, 0, 3 * objs[i].elements[j].numTriangles);
+				}
 			}
 		}
 	}
 	else
 	{
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glUseProgram(quadShader);
@@ -2437,6 +2494,39 @@ void Idle()
 	{
 		AfterSaving();
 		execAfterSave = false;
+	}
+
+	if (cameraMouseControl)
+	{
+		float rotateSpeedFactor = 0.5f;
+
+		double curPosX, curPosY;
+		glfwGetCursorPos(window, &curPosX, &curPosY);
+
+		float offsetX = curPosX - curPosDownX;
+		float offsetY = curPosY - curPosDownY;
+		glm::vec3 offset = glm::vec3(offsetY, offsetX, 0.0f) * rotateSpeedFactor;
+		
+		previewer.RotateCamera(camRotDown + offset);
+
+		float frameDelta = 1.0f / ImGui::GetIO().Framerate; // in second
+		float moveDelta = moveSpeed * moveSpeed * frameDelta;
+
+		glm::vec3 camPos = previewer.CameraPosition();
+		glm::vec3 camDir = previewer.CameraDirection();
+		glm::vec3 camRight = glm::normalize(glm::cross(previewer.CameraUp(), camDir));
+		if (camMoveForward)
+			camPos += camDir * moveDelta;
+		if (camMoveBackward)
+			camPos -= camDir * moveDelta;
+		if (camMoveLeft)
+			camPos -= camRight * moveDelta;
+		if (camMoveRight)
+			camPos += camRight * moveDelta;
+		
+		previewer.SetCamera(camPos, previewer.CameraDirection(), previewer.CameraUp());
+
+		sceneModified = true;
 	}
 
 	Display();
@@ -2609,6 +2699,95 @@ void Kbd(GLFWwindow* window, int key, int scancode, int action, int mods)
 			break;
 		}
 	}
+
+	if (cameraMouseControl)
+	{
+		switch (key)
+		{
+		case GLFW_KEY_W:
+			if (action == GLFW_PRESS)
+				camMoveForward = true;
+			else if (action == GLFW_RELEASE)
+				camMoveForward = false;
+			break;
+		case GLFW_KEY_S:
+			if (action == GLFW_PRESS)
+				camMoveBackward = true;
+			else if (action == GLFW_RELEASE)
+				camMoveBackward = false;
+			break;
+		case GLFW_KEY_A:
+			if (action == GLFW_PRESS)
+				camMoveLeft = true;
+			else if (action == GLFW_RELEASE)
+				camMoveLeft = false;
+			break;
+		case GLFW_KEY_D:
+			if (action == GLFW_PRESS)
+				camMoveRight = true;
+			else if (action == GLFW_RELEASE)
+				camMoveRight = false;
+			break;
+		}
+	}
+}
+
+void Mouse(GLFWwindow* window, int button, int action, int mods)
+{
+	// Left click: pick element
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS &&
+		preview && canLoad && viewportFocused)
+	{
+		double curPosX, curPosY;
+		glfwGetCursorPos(window, &curPosX, &curPosY);
+		glm::ivec2 curPos = glm::ivec2(curPosX, curPosY - menuHeight - toolbarHeight);
+
+		glm::ivec2 viewportSize = glm::ivec2(wWindow - rightBarWidth,
+			hWindow - menuHeight - toolbarHeight - statusBarHeight);
+
+		GLint posX = wRender * ((float)curPos.x / (float)viewportSize.x);
+		GLint posY = hRender * ((float)curPos.y / (float)viewportSize.y);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glReadBuffer(GL_COLOR_ATTACHMENT1);
+		float data[3];
+		glReadPixels(posX, hRender - 1 - posY, 1, 1, GL_RGB, GL_FLOAT, &data);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		pickedObjId = data[0] - 1;
+		pickedElementId = data[1] - 1;
+	}
+
+	// Right press: enter camera mouse control
+	else if (button == GLFW_MOUSE_BUTTON_RIGHT && preview && canLoad)
+	{
+		if (action == GLFW_PRESS)
+		{
+			double curPosX, curPosY;
+			glfwGetCursorPos(window, &curPosX, &curPosY);
+
+			if (viewportFocused)
+			{
+				cameraMouseControl = true;
+				curPosDownX = curPosX;
+				curPosDownY = curPosY;
+				camRotDown = previewer.CameraRotation();
+			}
+		}
+
+		else if (action == GLFW_RELEASE)
+		{
+			if (cameraMouseControl)
+			{
+				cameraMouseControl = false;
+				camMoveForward = false;
+				camMoveBackward = false;
+				camMoveLeft = false;
+				camMoveRight = false;
+			}
+		}
+	}
 }
 
 void DropFiles(GLFWwindow* window, int count, const char** paths)
@@ -2718,6 +2897,7 @@ int InitializeGL(GLFWwindow*& window)
 	glfwSetWindowIcon(window, 4, windowIcons);
 
 	glfwSetKeyCallback(window, Kbd);
+	glfwSetMouseButtonCallback(window, Mouse);
 	glfwSetFramebufferSizeCallback(window, Reshape);
 	glfwSetDropCallback(window, DropFiles);
 	glfwSetWindowCloseCallback(window, Close);
@@ -2787,6 +2967,15 @@ void InitializeGLFrame()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//glBindTexture(GL_TEXTURE_2D, 0);
+	if (pickTex == -1)
+		glGenTextures(1, &pickTex);
+	glBindTexture(GL_TEXTURE_2D, pickTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, wRender, hRender, 0, GL_RGB, GL_FLOAT, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	if (rbo == -1)
 		glGenRenderbuffers(1, &rbo);
@@ -2797,6 +2986,7 @@ void InitializeGLFrame()
 		glGenFramebuffers(1, &fbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboTex, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, pickTex, 0);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
@@ -2946,6 +3136,8 @@ void OnExit()
 		glDeleteTextures(1, &frameTex);
 	if (fboTex != -1)
 		glDeleteTextures(1, &fboTex);
+	if (pickTex != 1)
+		glDeleteTextures(1, &pickTex);
 	if (appIconTex != -1)
 		glDeleteTextures(1, &appIconTex);
 }
