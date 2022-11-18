@@ -17,9 +17,9 @@ struct AABB
 	glm::vec3 min = glm::vec3(INF);
 	glm::vec3 max = glm::vec3(-INF);
 
-	void Build(glm::vec3 v);
+	void Build(const glm::vec3& v);
 	void Check();
-	bool Intersect(glm::vec3 ro, glm::vec3 rd);
+	bool Intersect(const glm::vec3& ro, const glm::vec3& rd);
 };
 
 struct TriangleBarycentricInfo
@@ -73,15 +73,15 @@ private:
 	static bool TriYCompare(const Triangle& a, const Triangle& b);
 	static bool TriZCompare(const Triangle& a, const Triangle& b);
 
-    bool IsSameSide(glm::vec3 p1, glm::vec3 p2, glm::vec3 a, glm::vec3 b);
-    bool IsInside(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c);
+	const bool IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b);
+	const bool IsInside(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 
 public:
 	BVHNode();
-	BVHNode(Triangle t);
+	BVHNode(const Triangle& t);
 	~BVHNode();
-	BVHNode* Construct(std::vector<Triangle> triangles);
-	bool Hit(glm::vec3 ro, glm::vec3 rd, Triangle& triangleOut, float& distOut);
+	BVHNode* Construct(std::vector<Triangle>& triangles);
+	const bool Hit(const glm::vec3& ro, const glm::vec3& rd, Triangle& triangleOut, float& distOut);
 };
 
 #endif

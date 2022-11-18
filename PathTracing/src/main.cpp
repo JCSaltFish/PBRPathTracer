@@ -73,7 +73,7 @@ ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "1.1.0";
+const std::string version = "1.2.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -199,7 +199,7 @@ void NewScene()
 	}
 }
 
-void GetResolutionFromSceneFile(std::string file)
+void GetResolutionFromSceneFile(const std::string& file)
 {
 	std::ifstream fr(file, std::ofstream::in);
 
@@ -230,7 +230,7 @@ void GetResolutionFromSceneFile(std::string file)
 	fr.close();
 }
 
-void LoadScene(std::string file)
+void LoadScene(const std::string& file)
 {
 	std::ifstream fr(file, std::ofstream::in);
 
@@ -364,7 +364,7 @@ void LoadScene(std::string file)
 }
 
 // Pre-load objects for object paths redirecion
-void LoadObjectPathsFromSceneFile(std::string file)
+void LoadObjectPathsFromSceneFile(const std::string& file)
 {
 	redirObjects.swap(std::vector<RedirObject>());
 	needsRedirObjects = false;
@@ -643,7 +643,7 @@ void OpenScene()
 }
 
 // This function runs in path tracer thread
-void ExportAt(std::string path)
+void ExportAt(const std::string& path)
 {
     statusText = "Exporting file at: " + path + "...";
 	statusShowBegin = std::chrono::steady_clock::now();

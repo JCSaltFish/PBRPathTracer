@@ -69,7 +69,7 @@ void Previewer::CalcTangent
     T[2] = f * (tc20[1] * v10[2] - tc10[1] * v20[2]);
 }
 
-bool Previewer::HasSmoothingGroup(const tinyobj::shape_t& shape)
+const bool Previewer::HasSmoothingGroup(const tinyobj::shape_t& shape)
 {
     for (size_t i = 0; i < shape.mesh.smoothing_group_ids.size(); i++)
     {
@@ -291,7 +291,7 @@ void Previewer::ComputeSmoothingShapes
     }
 }
 
-bool Previewer::LoadObject(std::string filename, int id)
+const bool Previewer::LoadObject(const std::string& filename, int id)
 {
     int nameStartIndex = filename.find_last_of('/') + 1;
     if (nameStartIndex > filename.size() - 1)
@@ -523,12 +523,12 @@ bool Previewer::LoadObject(std::string filename, int id)
     return true;
 }
 
-std::vector<PreviewerLoader::Object> Previewer::GetLoadedObjects()
+std::vector<PreviewerLoader::Object> Previewer::GetLoadedObjects() const
 {
     return mLoadedObjects;
 }
 
-GLuint Previewer::LoadTexture(std::string file)
+GLuint Previewer::LoadTexture(const std::string& file)
 {
     GLuint tex = -1;
     Image texture(file);
@@ -564,7 +564,7 @@ void Previewer::FreeObject(int objId)
     }
 }
 
-void Previewer::SetNormalTextureForElement(int objId, int elementId, std::string file)
+void Previewer::SetNormalTextureForElement(int objId, int elementId, const std::string& file)
 {
     if (objId >= mLoadedObjects.size())
         return;
@@ -583,7 +583,7 @@ void Previewer::SetNormalTextureForElement(int objId, int elementId, std::string
     mLoadedObjects[objId].elements[elementId].normalTexFile = file;
 }
 
-void Previewer::SetMaterial(int objId, int elementId, Material& m)
+void Previewer::SetMaterial(int objId, int elementId, const Material& m)
 {
     if (objId >= mLoadedObjects.size())
         return;
@@ -592,14 +592,14 @@ void Previewer::SetMaterial(int objId, int elementId, Material& m)
     mLoadedObjects[objId].elements[elementId].material = m;
 }
 
-void Previewer::SetLocation(int objId, glm::vec3 location)
+void Previewer::SetLocation(int objId, const glm::vec3& location)
 {
     if (objId >= mLoadedObjects.size())
         return;
     mLoadedObjects[objId].SetLocation(location);
 }
 
-void Previewer::SetRotation(int objId, glm::vec3 rotation)
+void Previewer::SetRotation(int objId, const glm::vec3& rotation)
 {
     if (objId >= mLoadedObjects.size())
         return;
@@ -617,7 +617,7 @@ void Previewer::SetRotation(int objId, glm::vec3 rotation)
     mLoadedObjects[objId].SetRotation(glm::vec3(x, y, z));
 }
 
-void Previewer::SetScale(int objId, glm::vec3 scale)
+void Previewer::SetScale(int objId, const glm::vec3& scale)
 {
     if (objId >= mLoadedObjects.size())
         return;
@@ -673,7 +673,7 @@ void Previewer::SendObjectsToPathTracer(PathTracer* pPathTracer)
     pPathTracer->BuildBVH();
 }
 
-void Previewer::SetCamera(glm::vec3 pos, glm::vec3 dir, glm::vec3 up)
+void Previewer::SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up)
 {
     mCamPos = pos;
     mCamDir = glm::normalize(dir);
@@ -692,42 +692,42 @@ void Previewer::SetProjection(float f, float fovy)
         mCamFovy = 179.5;
 }
 
-glm::vec3 Previewer::CameraPosition()
+const glm::vec3 Previewer::CameraPosition() const
 {
     return mCamPos;
 }
 
-glm::vec3 Previewer::CameraDirection()
+const glm::vec3 Previewer::CameraDirection() const
 {
     return mCamDir;
 }
 
-glm::vec3 Previewer::CameraUp()
+const glm::vec3 Previewer::CameraUp() const
 {
     return mCamUp;
 }
 
-glm::vec3 Previewer::PreviewCameraPosition()
+const glm::vec3 Previewer::PreviewCameraPosition() const
 {
     return glm::vec3(-mCamPos.x, mCamPos.y, mCamPos.z);
 }
 
-glm::vec3 Previewer::PreviewCameraDirection()
+const glm::vec3 Previewer::PreviewCameraDirection() const
 {
     return glm::vec3(-mCamDir.x, mCamDir.y, mCamDir.z);
 }
 
-glm::vec3 Previewer::PreviewCameraUp()
+const glm::vec3 Previewer::PreviewCameraUp() const
 {
     return glm::vec3(-mCamUp.x, mCamUp.y, mCamUp.z);
 }
 
-glm::vec3 Previewer::CameraRotation()
+const glm::vec3 Previewer::CameraRotation() const
 {
     return mCamRot;
 }
 
-void Previewer::RotateCamera(glm::vec3 rotation)
+void Previewer::RotateCamera(const glm::vec3& rotation)
 {
     float x = glm::mod(rotation.x, 360.0f);
     if (x < 0.0f)
@@ -748,12 +748,12 @@ void Previewer::RotateCamera(glm::vec3 rotation)
     mCamUp = glm::normalize(glm::vec3(Rz * Ry * Rx * glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)));
 }
 
-float Previewer::CameraFovy()
+const float Previewer::CameraFovy() const
 {
     return mCamFovy;
 }
 
-float Previewer::CameraFocal()
+const float Previewer::CameraFocal() const
 {
     return mCamFocal;
 }
@@ -764,7 +764,7 @@ void Previewer::SetPathTracerCamera(PathTracer* pPathTracer)
     pPathTracer->SetProjection(mCamFocal, mCamFovy);
 }
 
-int Previewer::GetTriangleCount()
+const int Previewer::GetTriangleCount() const
 {
     int count = 0;
     for (auto& obj : mLoadedObjects)
@@ -802,7 +802,7 @@ void Previewer::SelectObject(int objId, bool select)
     mLoadedObjects[objId].isSelected = select;
 }
 
-int Previewer::GetNumSelectedObjects()
+const int Previewer::GetNumSelectedObjects() const
 {
     int res = 0;
     for (auto& obj : mLoadedObjects)
@@ -828,7 +828,7 @@ void Previewer::DeleteSelectedObjects()
     }
 }
 
-void Previewer::ReplaceSelectedObjectsWith(std::string file)
+void Previewer::ReplaceSelectedObjectsWith(const std::string& file)
 {
     for (int i = 0; i < mLoadedObjects.size(); i++)
     {
@@ -846,7 +846,7 @@ void Previewer::ReplaceSelectedObjectsWith(std::string file)
     }
 }
 
-void Previewer::SetName(int objId, std::string name)
+void Previewer::SetName(int objId, const std::string& name)
 {
     if (objId >= mLoadedObjects.size())
         return;
@@ -854,7 +854,7 @@ void Previewer::SetName(int objId, std::string name)
     mLoadedObjects[objId].name = name;
 }
 
-void Previewer::SetName(int objId, int elementId, std::string name)
+void Previewer::SetName(int objId, int elementId, const std::string& name)
 {
     if (objId >= mLoadedObjects.size())
         return;

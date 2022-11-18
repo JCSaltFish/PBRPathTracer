@@ -41,7 +41,7 @@ namespace PathTracerLoader
 			name = "";
 		}
 
-		Element(std::string name)
+		Element(const std::string& name)
 		{
 			this->name = name;
 		}
@@ -57,7 +57,7 @@ namespace PathTracerLoader
 			name = "";
 		}
 
-		Object(std::string name)
+		Object(const std::string& name)
 		{
 			this->name = name;
 		}
@@ -95,29 +95,29 @@ public:
 	~PathTracer();
 
 private:
-	float Rand();
-	glm::vec2 GetUV(glm::vec3& p, Triangle& t);
-	glm::vec3 GetSmoothNormal(glm::vec3& p, Triangle& t);
-	glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int depth = 0, bool inside = false);
+	const float Rand();
+	const glm::vec2 GetUV(const glm::vec3& p, const Triangle& t) const;
+	const glm::vec3 GetSmoothNormal(const glm::vec3& p, const Triangle& t) const;
+	const glm::vec3 Trace(const glm::vec3& ro, const glm::vec3& rd, int depth = 0, bool inside = false);
 
 public:
-	void LoadObject(std::string file, glm::mat4 model);
-	void SetNormalTextureForElement(int objId, int elementId, std::string file);
+	void LoadObject(const std::string& file, const glm::mat4& model);
+	void SetNormalTextureForElement(int objId, int elementId, const std::string& file);
 	void SetMaterial(int objId, int elementId, Material& material);
 	void BuildBVH();
 	void ResetImage();
 	void ClearScene();
 
-	int GetSamples();
-	int GetTriangleCount();
-	int GetTraceDepth();
+	const int GetSamples() const;
+	const int GetTriangleCount() const;
+	const int GetTraceDepth() const;
 	void SetTraceDepth(int depth);
 	void SetOutImage(GLubyte* out);
-	void SetResolution(glm::ivec2 res);
-	glm::ivec2 GetResolution();
-	std::vector<PathTracerLoader::Object> GetLoadedObjects();
+	void SetResolution(const glm::ivec2& res);
+	const glm::ivec2 GetResolution() const;
+	std::vector<PathTracerLoader::Object> GetLoadedObjects() const;
 
-	void SetCamera(glm::vec3 pos, glm::vec3 dir, glm::vec3 up);
+	void SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up);
 	void SetProjection(float f, float fovy);
 	void RenderFrame();
 	void Exit();

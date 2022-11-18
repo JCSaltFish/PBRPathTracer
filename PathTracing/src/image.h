@@ -14,16 +14,16 @@ private:
 
 public:
 	Image();
-	Image(std::string filename);
+	Image(const std::string& filename);
 	~Image();
 
 public:
-	int width();
-	int height();
+	const int width() const;
+	const int height() const;
 
-	void Load(std::string filename);
+	void Load(const std::string& filename);
 
-	glm::vec4 tex2D(glm::vec2 uv);
+	glm::vec4 tex2D(const glm::vec2& uv);
 	unsigned char* data();
 };
 

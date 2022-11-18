@@ -10,7 +10,7 @@ Image::Image() :
 	mData = 0;
 }
 
-Image::Image(std::string filename)
+Image::Image(const std::string& filename)
 {
 	mFilename = filename;
 	mData = 0;
@@ -23,17 +23,17 @@ Image::~Image()
 		stbi_image_free(mData);
 }
 
-int Image::width()
+const int Image::width() const
 {
 	return mWidth;
 }
 
-int Image::height()
+const int Image::height() const
 {
 	return mHeight;
 }
 
-void Image::Load(std::string filename)
+void Image::Load(const std::string& filename)
 {
 	if (mData)
 		stbi_image_free(mData);
@@ -43,7 +43,7 @@ void Image::Load(std::string filename)
 	mData = stbi_load(filename.c_str(), &mWidth, &mHeight, &n, 4);
 }
 
-glm::vec4 Image::tex2D(glm::vec2 uv)
+glm::vec4 Image::tex2D(const glm::vec2& uv)
 {
 	if (!mData)
 		return glm::vec4(0.0f);

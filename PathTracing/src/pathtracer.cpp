@@ -36,7 +36,7 @@ PathTracer::~PathTracer()
 		delete texture;
 }
 
-void PathTracer::LoadObject(std::string file, glm::mat4 model)
+void PathTracer::LoadObject(const std::string& file, const glm::mat4& model)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -142,7 +142,7 @@ void PathTracer::LoadObject(std::string file, glm::mat4 model)
 	}
 }
 
-void PathTracer::SetNormalTextureForElement(int objId, int elementId, std::string file)
+void PathTracer::SetNormalTextureForElement(int objId, int elementId, const std::string& file)
 {
 	Material& mat = mLoadedObjects[objId].elements[elementId].material;
 	if (mat.normalTexId != -1)
@@ -201,28 +201,28 @@ void PathTracer::SetOutImage(GLubyte* out)
 	mOutImg = out;
 }
 
-void PathTracer::SetResolution(glm::ivec2 res)
+void PathTracer::SetResolution(const glm::ivec2& res)
 {
 	mResolution = res;
 	mTotalImg = new float[res.x * res.y * 3];
 }
 
-std::vector<PathTracerLoader::Object> PathTracer::GetLoadedObjects()
+std::vector<PathTracerLoader::Object> PathTracer::GetLoadedObjects() const
 {
 	return mLoadedObjects;
 }
 
-glm::ivec2 PathTracer::GetResolution()
+const glm::ivec2 PathTracer::GetResolution() const
 {
 	return mResolution;
 }
 
-int PathTracer::GetTriangleCount()
+const int PathTracer::GetTriangleCount() const
 {
 	return mTriangles.size();
 }
 
-int PathTracer::GetTraceDepth()
+const int PathTracer::GetTraceDepth() const
 {
 	return mMaxDepth;
 }
@@ -232,7 +232,7 @@ void PathTracer::SetTraceDepth(int depth)
 	mMaxDepth = depth;
 }
 
-void PathTracer::SetCamera(glm::vec3 pos, glm::vec3 dir, glm::vec3 up)
+void PathTracer::SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up)
 {
 	mCamPos = pos;
 	mCamDir = glm::normalize(dir);
@@ -251,18 +251,18 @@ void PathTracer::SetProjection(float f, float fovy)
 		mCamFovy = 179.5;
 }
 
-int PathTracer::GetSamples()
+const int PathTracer::GetSamples() const
 {
 	return mSamples;
 }
 
-float PathTracer::Rand()
+const float PathTracer::Rand()
 {
 	std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 	return dis(mRng);
 }
 
-glm::vec2 PathTracer::GetUV(glm::vec3& p, Triangle& t)
+const glm::vec2 PathTracer::GetUV(const glm::vec3& p, const Triangle& t) const
 {
 	glm::vec3 v2 = p - t.v1;
 	float d20 = glm::dot(v2, t.barycentricInfo.v0);
@@ -276,7 +276,7 @@ glm::vec2 PathTracer::GetUV(glm::vec3& p, Triangle& t)
 	return (1.0f - alpha - beta) * t.uv1 + alpha * t.uv2 + beta * t.uv3;
 }
 
-glm::vec3 PathTracer::GetSmoothNormal(glm::vec3& p, Triangle& t)
+const glm::vec3 PathTracer::GetSmoothNormal(const glm::vec3& p, const Triangle& t) const
 {
 	glm::vec3 v2 = p - t.v1;
 	float d20 = glm::dot(v2, t.barycentricInfo.v0);
@@ -292,13 +292,13 @@ glm::vec3 PathTracer::GetSmoothNormal(glm::vec3& p, Triangle& t)
 	return glm::normalize(n);
 }
 
-glm::vec3 PathTracer::Trace(glm::vec3 ro, glm::vec3 rd, int depth, bool inside)
+const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int depth, bool inside)
 {
 	float d = 0.0f;
 	Triangle t;
 	if (mBvh->Hit(ro, rd, t, d))
 	{
-		Material mat = mLoadedObjects[t.objectId].elements[t.elementId].material;
+		Material& mat = mLoadedObjects[t.objectId].elements[t.elementId].material;
 		glm::vec3 p = ro + rd * d;
 		glm::vec2 uv = GetUV(p, t);
 		glm::vec3 n = t.normal;

@@ -3,7 +3,7 @@
 
 #include "mesh.h"
 
-void AABB::Build(glm::vec3 v)
+void AABB::Build(const glm::vec3& v)
 {
 	float minX = min.x;
 	float minY = min.y;
@@ -45,7 +45,7 @@ void AABB::Check()
 	max = glm::vec3(maxX, maxY, maxZ);
 }
 
-bool AABB::Intersect(glm::vec3 ro, glm::vec3 rd)
+bool AABB::Intersect(const glm::vec3& ro, const glm::vec3& rd)
 {
 	glm::vec3 tMin = (min - ro) / rd;
 	glm::vec3 tMax = (max - ro) / rd;
@@ -100,7 +100,7 @@ BVHNode::BVHNode()
 	mRandAxis = std::uniform_int_distribution<int>(0, 2);
 }
 
-BVHNode::BVHNode(Triangle t) : mTriangle(t)
+BVHNode::BVHNode(const Triangle& t) : mTriangle(t)
 {
 	mBox.Build(t.v1);
 	mBox.Build(t.v2);
@@ -174,7 +174,7 @@ bool BVHNode::TriZCompare(const Triangle& a, const Triangle& b)
 		return false;
 }
 
-BVHNode* BVHNode::Construct(std::vector<Triangle> triangles)
+BVHNode* BVHNode::Construct(std::vector<Triangle>& triangles)
 {
 	std::random_device rd;
 	int axis = mRandAxis(std::mt19937(rd()));
@@ -222,19 +222,21 @@ BVHNode* BVHNode::Construct(std::vector<Triangle> triangles)
 
 // based from:
 // https://blackpawn.com/texts/pointinpoly/?fbclid=IwAR2utQtHuFUrHXRszp5sP8CP3jJuMNsOVrpwqAWWSBIx6DLENK5T9lkMceA
-bool BVHNode::IsSameSide(glm::vec3 p1, glm::vec3 p2, glm::vec3 a, glm::vec3 b) {
-    glm::vec3 ba = b - a;
-    glm::vec3 cp1 = glm::cross(ba, (p1 - a));
-    glm::vec3 cp2 = glm::cross(ba, (p2 - a));
+const bool BVHNode::IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b)
+{
+	glm::vec3 ba = b - a;
+	glm::vec3 cp1 = glm::cross(ba, (p1 - a));
+	glm::vec3 cp2 = glm::cross(ba, (p2 - a));
 
-    return (glm::dot(cp1, cp2) >= 0);
+	return (glm::dot(cp1, cp2) >= 0);
 }
 
-bool BVHNode::IsInside(glm::vec3 p, glm::vec3 a, glm::vec3 b, glm::vec3 c) {
-    return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
+const bool BVHNode::IsInside(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+{
+	return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
 }
 
-bool BVHNode::Hit(glm::vec3 ro, glm::vec3 rd, Triangle& triangleOut, float& distOut)
+const bool BVHNode::Hit(const glm::vec3& ro, const glm::vec3& rd, Triangle& triangleOut, float& distOut)
 {
 	if (mLeft && mRight)
 	{
