@@ -10,7 +10,7 @@ private:
 	std::string mFilename;
 	int mWidth;
 	int mHeight;
-	unsigned char* mData;
+	float* mData;
 
 public:
 	Image();
@@ -24,7 +24,7 @@ public:
 	void Load(const std::string& filename);
 
 	glm::vec4 tex2D(const glm::vec2& uv);
-	unsigned char* data();
+	float* data();
 };
 
 #endif

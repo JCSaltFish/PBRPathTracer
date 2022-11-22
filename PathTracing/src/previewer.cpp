@@ -10,6 +10,7 @@ Previewer::Previewer()
     mCamPos = glm::vec3(0.0f, 0.0f, -10.0f);
     mCamDir = glm::vec3(0.0f, 0.0f, 1.0f);
     mCamUp = glm::vec3(0.0f, 1.0f, 0.0f);
+    mCamRot = glm::vec3();
     mCamFocal = 0.1f;
     mCamFovy = 90;
 }
@@ -688,7 +689,7 @@ void Previewer::SendObjectsToPathTracer(PathTracer* pPathTracer)
             }
         }
     }
-    pPathTracer->BuildBVH();
+    //pPathTracer->BuildBVH();
 }
 
 void Previewer::SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up)

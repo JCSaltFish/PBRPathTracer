@@ -8,12 +8,19 @@
 
 #include "pathtracer.h"
 
+#include "cudakernel.cuh"
+
 PathTracer::PathTracer() : mRng(std::random_device()())
 {
+	mBvh = 0;
+
 	mOutImg = 0;
 	mTotalImg = 0;
 	mMaxDepth = 3;
 
+	mResolution = glm::ivec2();
+
+	mCamPos = glm::vec3();
 	mCamDir = glm::vec3(0.0f, 0.0f, 1.0f);
 	mCamUp = glm::vec3(0.0f, 1.0f, 0.0f);
 	mCamFocal = 0.1f;
@@ -194,6 +201,8 @@ void PathTracer::ClearScene()
 	if (mTotalImg)
 		delete[] mTotalImg;
 	mTotalImg = 0;
+
+	CUDAReset();
 }
 
 void PathTracer::SetOutImage(GLubyte* out)
@@ -383,6 +392,44 @@ const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int 
 	}
 
 	return glm::vec3(0.0f);
+}
+
+void PathTracer::CUDAInit()
+{
+	InitCUDA();
+	CUDASetResolution(mResolution.x, mResolution.y);
+	CUDASetTraceDepth(mMaxDepth);
+	float pos[3]{ mCamPos.x, mCamPos.y, mCamPos.z };
+	float dir[3]{ mCamDir.x, mCamDir.y, mCamDir.z };
+	float up[3]{ mCamUp.x, mCamUp.y, mCamUp.z };
+	CUDASetCamera(pos, dir, up);
+	CUDASetProjection(mCamFocal, mCamFovy);
+}
+
+void PathTracer::BuildGPUScene()
+{
+	for (auto& t : mTriangles)
+		t.material = mLoadedObjects[t.objectId].elements[t.elementId].material;
+
+	BuildBVH();
+	std::vector<GPUBVHNode> bvh;
+	mBvh->GetGPULayout(bvh);
+	CUDASetBVH(bvh.data(), bvh.size());
+
+	CUDALoadTextures(mLoadedTextures);
+}
+
+void PathTracer::CUDARender(float* img)
+{
+	if (mNeedReset)
+	{
+		mNeedReset = false;
+		mSamples = 0;
+	}
+
+	mSamples++;
+
+	CUDARenderFrame(mResolution.x, mResolution.y, img, mSamples);
 }
 
 void PathTracer::RenderFrame()

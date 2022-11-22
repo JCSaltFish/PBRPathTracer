@@ -7,7 +7,6 @@
     <ClCompile Include="src\mesh.cpp" />
     <ClCompile Include="src\image.cpp" />
     <ClCompile Include="src\previewer.cpp" />
-    <ClCompile Include="src\pathutil.cpp" />
     <ClCompile Include="..\imgui\imgui.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
@@ -35,6 +34,7 @@
     <ClCompile Include="..\imgui\misc\cpp\imgui_stdlib.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
+    <ClCompile Include="src\pathutil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\quad.frag">
@@ -70,7 +70,6 @@
     <ClInclude Include="src\mesh.h" />
     <ClInclude Include="src\image.h" />
     <ClInclude Include="src\previewer.h" />
-    <ClInclude Include="src\pathutil.h" />
     <ClInclude Include="..\imgui\imconfig.h">
       <Filter>imgui</Filter>
     </ClInclude>
@@ -110,6 +109,8 @@
     <ClInclude Include="resource.h">
       <Filter>Resources</Filter>
     </ClInclude>
+    <ClInclude Include="src\cudakernel.cuh" />
+    <ClInclude Include="src\pathutil.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="assets\icon.ico">
@@ -120,5 +121,8 @@
     <ResourceCompile Include="PathTracing.rc">
       <Filter>Resources</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="src\cudakernel.cu" />
   </ItemGroup>
 </Project>

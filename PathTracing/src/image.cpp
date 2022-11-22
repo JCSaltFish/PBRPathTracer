@@ -40,7 +40,7 @@ void Image::Load(const std::string& filename)
 
 	mFilename = filename;
 	int n;
-	mData = stbi_load(filename.c_str(), &mWidth, &mHeight, &n, 4);
+	mData = stbi_loadf(filename.c_str(), &mWidth, &mHeight, &n, 4);
 }
 
 glm::vec4 Image::tex2D(const glm::vec2& uv)
@@ -52,18 +52,12 @@ glm::vec4 Image::tex2D(const glm::vec2& uv)
 		return glm::vec4(0.0f);
 
 	glm::ivec2 coord = glm::ivec2(mWidth * uv.x, mHeight * uv.y);
-	const unsigned char* p = mData + (4 * (coord.y * mWidth + coord.x));
-	
-	float r = (float)p[0] / 255.0f;
-	float g = (float)p[1] / 255.0f;
-	float b = (float)p[2] / 255.0f;
-	float a = (float)p[3] / 255.0f;
+	float* p = mData + (4 * (coord.y * mWidth + coord.x));
 
-	glm::vec4 res = glm::vec4(r, g, b, a);
-	return res;
+	return glm::vec4(p[0], p[1], p[2], p[3]);
 }
 
-unsigned char* Image::data()
+float* Image::data()
 {
 	return mData;
 }

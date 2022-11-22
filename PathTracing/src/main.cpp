@@ -4,6 +4,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 
+#define GLM_FORCE_CUDA
+
 #ifdef _DEBUG
 #include <iostream>
 #endif
@@ -17,6 +19,9 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
+#include <cuda_gl_interop.h>
+
 #include <omp.h>
 
 #include <glm/glm.hpp>
@@ -44,6 +49,8 @@
 #include "previewer.h"
 #include "pathutil.h"
 
+#include "cudakernel.cuh"
+
 /* ----- GLFW/IMGUI PARAMS ------ */
 GLFWwindow* window;
 const GLint rightBarWidth = 380;
@@ -66,14 +73,18 @@ GLuint rbo = -1;
 GLuint frameTex = -1;
 GLuint fboTex = -1;
 GLuint pickTex = -1;
-GLubyte* texData = 0;
+//GLubyte* texData = 0;
+
+float* gpuTexData = 0;
+GLuint pbo = -1;
+cudaGraphicsResource_t pboCuda;
 
 ImFont* bigIconFont = 0;
 ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "1.2.0";
+const std::string version = "CUDA 1.2.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -96,6 +107,8 @@ bool canStart = true;
 bool canPause = false;
 bool canStop = false;
 bool canRestart = false;
+
+bool canDraw = false;
 
 bool saveFile = false;
 bool exportFile = false;
@@ -673,9 +686,21 @@ void ExportAt(const std::string& path)
     statusText = "Exporting file at: " + path + "...";
 	statusShowBegin = std::chrono::steady_clock::now();
 
+	size_t size = wRender * hRender * 3;
+	size_t byteSize = size * sizeof(float);
+	float* h_data = new float[size];
+	gpuErrchk(cudaMemcpy(h_data, gpuTexData, size * sizeof(float), cudaMemcpyDeviceToHost));
+
+	GLubyte* texData = new GLubyte[wRender * hRender * 3];
+	for (int i = 0; i < size; i++)
+		texData[i] = h_data[i] * 255;
+
     stbi_flip_vertically_on_write(true);
     GLuint channel = 3; // rgb
     stbi_write_png(path.c_str(), wRender, hRender, channel, texData, channel * wRender);
+
+	delete[] h_data;
+	delete[] texData;
 
 	statusText = "Exported file at: " + path;
 	statusShowBegin = std::chrono::steady_clock::now();
@@ -2491,19 +2516,33 @@ void Display()
 				}
 			}
 		}
+		canDraw = false;
 	}
-	else
+	else if (canDraw)
 	{
+		gpuErrchk(cudaGraphicsUnmapResources(1, &pboCuda));
+
 		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glUseProgram(quadShader);
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, frameTex);
+
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, wRender, hRender, GL_RGB, GL_FLOAT, NULL);
+
 		int fbo_tex_loc = glGetUniformLocation(quadShader, "tex");
 		glUniform1i(fbo_tex_loc, 0);
 		glBindVertexArray(quadVao);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); // draw quad
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+		gpuErrchk(cudaGraphicsMapResources(1, &pboCuda));
+		canDraw = false;
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2557,13 +2596,13 @@ void Idle()
 	Display();
 
 	// Only refresh result image on rendering
-	if (((init || stop || isPausing) && !render) || preview)
-		return;
+	//if (((init || stop || isPausing) && !render) || preview)
+		//return;
 
-	glBindTexture(GL_TEXTURE_2D, frameTex);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, wRender, hRender, GL_RGB, GL_UNSIGNED_BYTE, texData);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	//glBindTexture(GL_TEXTURE_2D, frameTex);
+	//glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, wRender, hRender, GL_RGB, GL_UNSIGNED_BYTE, texData);
+	//glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void Reshape(GLFWwindow* window, int w, int h)
@@ -2884,7 +2923,7 @@ int InitializeGL(GLFWwindow*& window)
 	
 	wWindow = wRender + rightBarWidth;
 	hWindow = hRender + menuHeight + toolbarHeight + statusBarHeight;
-	window = glfwCreateWindow(wWindow, hWindow, "PathTracer", NULL, NULL);
+	window = glfwCreateWindow(wWindow, hWindow, "PathTracer - CUDA", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -2964,22 +3003,32 @@ void InitializeFrame()
 	if (quadVao == -1)
 		glGenVertexArrays(1, &quadVao);
 
+	if (pbo == -1)
+		glGenBuffers(1, &pbo);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER, wRender * hRender * sizeof(float) * 3, 0, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
 	if (frameTex == -1)
-	glGenTextures(1, &frameTex);
+		glGenTextures(1, &frameTex);
 	glBindTexture(GL_TEXTURE_2D, frameTex);
-	if (texData)
+	/*if (texData)
 		delete[] texData;
 	texData = new GLubyte[wRender * hRender * 3];
 	for (int i = 0; i < wRender * hRender * 3; i++)
-		texData[i] = 0;
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wRender, hRender, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+		texData[i] = 0;*/
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wRender, hRender, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, wRender, hRender, 0, GL_RGB, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	pathTracer.SetOutImage(texData);
+	//pathTracer.SetOutImage(texData);
+
+	gpuErrchk(cudaGraphicsGLRegisterBuffer(&pboCuda, pbo, cudaGraphicsRegisterFlagsNone));
+	gpuErrchk(cudaGraphicsMapResources(1, &pboCuda));
 }
 
 void InitializeGLFrame()
@@ -3106,15 +3155,28 @@ void PathTracerLoop()
 				stop = false;
 				pathTracer.SetResolution(glm::ivec2(wRender, hRender));
 				pathTracer.SetTraceDepth(traceDepth);
-				pathTracer.SetOutImage(texData);
+				//pathTracer.SetOutImage(texData);
 				pathTracer.ResetImage();
+
+				pathTracer.CUDAInit();
+				pathTracer.BuildGPUScene();
 
 				glfwSetTime(0.0); // reset counter
 
 				init = false;
 			}
-			pathTracer.RenderFrame();
+			//pathTracer.RenderFrame();
+			if (!canDraw)
+			{
+				size_t numBytes = wRender * hRender * sizeof(float) * 3;
+				gpuErrchk(cudaGraphicsResourceGetMappedPointer((void**)&gpuTexData, &numBytes, pboCuda));
+				pathTracer.CUDARender(gpuTexData);
+
+				canDraw = true;
+			}
 		}
+		else
+			canDraw = true;
 		if (pause)
 		{
 			timePause = glfwGetTime();
@@ -3148,8 +3210,8 @@ void PathTracerLoop()
 
 void OnExit()
 {
-	if (texData)
-		delete[] texData;
+	//if (texData)
+		//delete[] texData;
 
 	if (quadVao != -1)
 		glDeleteVertexArrays(1, &quadVao);
@@ -3165,6 +3227,10 @@ void OnExit()
 		glDeleteTextures(1, &pickTex);
 	if (appIconTex != -1)
 		glDeleteTextures(1, &appIconTex);
+
+	if (pbo != -1)
+		glDeleteBuffers(1, &pbo);
+	CUDAFinish();
 }
 /* ----- PROGRAM FUNCTIONS ------ */
 
@@ -3184,7 +3250,7 @@ int main(int argc, char** argv)
 	InitializeGLFrame();
 	InitializeFrame();
 
-	omp_set_nested(1);
+	//omp_set_nested(1);
 	#pragma omp parallel sections num_threads(2)
 	{
 		#pragma omp section

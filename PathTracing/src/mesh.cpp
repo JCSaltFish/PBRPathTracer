@@ -105,6 +105,7 @@ BVHNode::BVHNode(const Triangle& t) : mTriangle(t)
 	mBox.Build(t.v1);
 	mBox.Build(t.v2);
 	mBox.Build(t.v3);
+	mBox.Check();
 
 	mLeft = 0;
 	mRight = 0;
@@ -296,4 +297,33 @@ const bool BVHNode::Hit(const glm::vec3& ro, const glm::vec3& rd, Triangle& tria
 	}
 
 	return false;
+}
+
+void BVHNode::GetGPULayout(std::vector<GPUBVHNode>& bvh)
+{
+	GPUBVHNode node;
+	node.box = mBox;
+	node.triangle = mTriangle;
+
+	int nodePos = bvh.size();
+	node.nodeIndex = nodePos;
+	bvh.push_back(node);
+	int offset = -1;
+
+	// offset for leaf node is -1
+	if (!mLeft && !mRight)
+		return;
+
+	if (mLeft)
+		mLeft->GetGPULayout(bvh);
+
+	if (mRight)
+	{
+		offset = bvh.size() - nodePos;
+		mRight->GetGPULayout(bvh);
+	}
+	else // left only
+		offset = 0;
+
+	bvh[nodePos].rightOffset = offset;
 }
