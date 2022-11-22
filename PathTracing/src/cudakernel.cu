@@ -4,7 +4,7 @@
 
 #include "cudakernel.cuh"
 
-__constant__ curandState_t* state;
+__constant__ curandState_t* state = 0;
 
 __constant__ float PI;
 __constant__ float EPSILON = 0.001f;
@@ -56,6 +56,8 @@ void CUDASetResolution(int x, int y)
 	gpuErrchk(cudaMemcpyToSymbol(resX, &x, sizeof(unsigned)));
 	gpuErrchk(cudaMemcpyToSymbol(resY, &y, sizeof(unsigned)));
 
+	if (state)
+		gpuErrchk(cudaFree(state));
 	curandState_t* d_randState;
 	gpuErrchk(cudaMalloc((void**)&d_randState, x * y * sizeof(curandState_t)));
 	gpuErrchk(cudaMemcpyToSymbol(state, &d_randState, sizeof(d_randState)));
@@ -422,5 +424,7 @@ void CUDAReset()
 
 void CUDAFinish()
 {
-	gpuErrchk(cudaFree(state));
+	CUDAReset();
+	if (state)
+		gpuErrchk(cudaFree(state));
 }
