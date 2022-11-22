@@ -198,6 +198,7 @@ public:
     void SetLocation(int objId, const glm::vec3& location);
     void SetRotation(int objId, const glm::vec3& rotation);
     void SetScale(int objId, const glm::vec3& scale);
+    void SetScaleDirect(int objId, const glm::vec3& scale);
 
     void SendObjectsToPathTracer(PathTracer* pPathTracer);
 

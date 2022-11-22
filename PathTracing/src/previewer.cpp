@@ -655,6 +655,24 @@ void Previewer::SetScale(int objId, const glm::vec3& scale)
     mLoadedObjects[objId].SetScale(glm::vec3(x, y, z));
 }
 
+void Previewer::SetScaleDirect(int objId, const glm::vec3& scale)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+
+    float x = scale.x;
+    if (x < 0.001f)
+        x = 0.001f;
+    float y = scale.y;
+    if (y < 0.001f)
+        y = 0.001f;
+    float z = scale.z;
+    if (z < 0.001f)
+        z = 0.001f;
+
+    mLoadedObjects[objId].SetScale(glm::vec3(x, y, z));
+}
+
 void Previewer::SendObjectsToPathTracer(PathTracer* pPathTracer)
 {
     for (int i = 0; i < mLoadedObjects.size(); i++)

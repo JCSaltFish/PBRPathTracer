@@ -319,7 +319,7 @@ void LoadScene(const std::string& file)
 		if (fr.eof()) { fr.close(); return; }
 		fr >> z;
 		if (fr.eof()) { fr.close(); return; }
-		previewer.SetScale(i, glm::vec3(x, y, z));
+		previewer.SetScaleDirect(i, glm::vec3(x, y, z));
 
 		int nElements = 0;
 		fr >> nElements;
@@ -339,6 +339,18 @@ void LoadScene(const std::string& file)
 			fr >> z;
 			if (fr.eof()) { fr.close(); return; }
 			m.baseColor = glm::vec3(x, y, z);
+
+			fr >> x;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> y;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> z;
+			if (fr.eof()) { fr.close(); return; }
+			m.emissive = glm::vec3(x, y, z);
+
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+			m.emissiveIntensity = val;
 
 			fr >> ival;
 			if (fr.eof()) { fr.close(); return; }
@@ -479,6 +491,16 @@ void LoadObjectPathsFromSceneFile(const std::string& file)
 			fr >> z;
 			if (fr.eof()) { fr.close(); return; }
 
+			fr >> x;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> y;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> z;
+			if (fr.eof()) { fr.close(); return; }
+
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+
 			fr >> ival;
 			if (fr.eof()) { fr.close(); return; }
 			fr >> val;
@@ -572,6 +594,9 @@ void SaveAt(std::string path)
 			fw << element.name << "\n";
 			v3 = element.material.baseColor;
 			fw << v3.x << " " << v3.y << " " << v3.z << "\n";
+			v3 = element.material.emissive;
+			fw << v3.x << " " << v3.y << " " << v3.z << "\n";
+			fw << element.material.emissiveIntensity << "\n";
 			fw << (int)element.material.type << "\n";
 			fw << element.material.roughness << "\n";
 			fw << element.normalTexFile << "\n";
