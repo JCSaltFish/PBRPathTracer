@@ -3230,7 +3230,6 @@ void OnExit()
 
 	if (pbo != -1)
 		glDeleteBuffers(1, &pbo);
-	CUDAFinish();
 }
 /* ----- PROGRAM FUNCTIONS ------ */
 

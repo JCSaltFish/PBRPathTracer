@@ -4,7 +4,10 @@
 
 #include "cudakernel.cuh"
 
-__constant__ curandState_t* state = 0;
+bool cudaInit = true;
+
+__constant__ curandState_t* state;
+curandState_t* d_state;
 
 __constant__ float PI;
 __constant__ float EPSILON = 0.001f;
@@ -16,8 +19,9 @@ __constant__ int samples;
 __constant__ float _camPos[3], _camDir[3], _camUp[3];
 __constant__ float camFocal, camFovy;
 
-__device__ GPUBVHNode* bvh = 0;
+__device__ GPUBVHNode* bvh;
 __constant__ int bvhSize;
+BVHNode* d_nodes;
 
 struct GPUImage
 {
@@ -32,6 +36,8 @@ struct GPUImage
 	}
 };
 __device__ GPUImage* textures = 0;
+GPUImage* d_imgs;
+std::vector<float*> d_texData;
 int numTextures = 0;
 
 __global__ void InitCuRand(int seed)
@@ -49,6 +55,8 @@ void InitCUDA()
 	float h_pi = glm::pi<float>();
 	gpuErrchk(cudaMemcpyToSymbol(PI, &h_pi, sizeof(float)));
 	gpuErrchk(cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 8));
+
+	cudaInit = false;
 }
 
 void CUDASetResolution(int x, int y)
@@ -56,11 +64,9 @@ void CUDASetResolution(int x, int y)
 	gpuErrchk(cudaMemcpyToSymbol(resX, &x, sizeof(unsigned)));
 	gpuErrchk(cudaMemcpyToSymbol(resY, &y, sizeof(unsigned)));
 
-	if (state)
-		gpuErrchk(cudaFree(state));
-	curandState_t* d_randState;
-	gpuErrchk(cudaMalloc((void**)&d_randState, x * y * sizeof(curandState_t)));
-	gpuErrchk(cudaMemcpyToSymbol(state, &d_randState, sizeof(d_randState)));
+	//curandState_t* d_randState;
+	gpuErrchk(cudaMalloc((void**)&d_state, x * y * sizeof(curandState_t)));
+	gpuErrchk(cudaMemcpyToSymbol(state, &d_state, sizeof(d_state)));
 
 	srand(time(0));
 	int seed = rand();
@@ -92,10 +98,10 @@ void CUDASetBVH(GPUBVHNode* nodes, int size)
 {
 	gpuErrchk(cudaMemcpyToSymbol(bvhSize, &size, sizeof(unsigned)));
 
-	BVHNode* d_Nodes;
-	gpuErrchk(cudaMalloc((void**)&d_Nodes, size * sizeof(GPUBVHNode)));
-	gpuErrchk(cudaMemcpy(d_Nodes, nodes, size * sizeof(GPUBVHNode), cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpyToSymbol(bvh, &d_Nodes, sizeof(GPUBVHNode*)));
+	//BVHNode* d_Nodes;
+	gpuErrchk(cudaMalloc((void**)&d_nodes, size * sizeof(GPUBVHNode)));
+	gpuErrchk(cudaMemcpy(d_nodes, nodes, size * sizeof(GPUBVHNode), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpyToSymbol(bvh, &d_nodes, sizeof(GPUBVHNode*)));
 }
 
 void CUDALoadTextures(const std::vector<Image*>& texVec)
@@ -103,29 +109,30 @@ void CUDALoadTextures(const std::vector<Image*>& texVec)
 	int size = texVec.size();
 	numTextures = size;
 
-	GPUImage* h_normalImgs = new GPUImage[size];
+	GPUImage* h_imgs = new GPUImage[size];
 	for (int i = 0; i < size; i++)
 	{
 		int w = texVec[i]->width();
 		int h = texVec[i]->height();
-		h_normalImgs[i].width = w;
-		h_normalImgs[i].height = h;
+		h_imgs[i].width = w;
+		h_imgs[i].height = h;
 
 		int size = w * h * 4 * sizeof(float);
 		float* h_data = new float[size];
 		memcpy(h_data, texVec[i]->data(), size);
 		float* d_data;
-		gpuErrchk(cudaMalloc(&d_data, size));
-		gpuErrchk(cudaMemcpy(d_data, h_data, size, cudaMemcpyHostToDevice));
+		d_texData.push_back(d_data);
+		gpuErrchk(cudaMalloc(&d_texData[i], size));
+		gpuErrchk(cudaMemcpy(d_texData[i], h_data, size, cudaMemcpyHostToDevice));
 		delete[] h_data;
-		h_normalImgs->data = d_data;
+		h_imgs->data = d_texData[i];
 	}
 
-	GPUImage* d_normalImgs;
-	gpuErrchk(cudaMalloc(&d_normalImgs, size * sizeof(GPUImage)));
-	gpuErrchk(cudaMemcpy(d_normalImgs, h_normalImgs, size * sizeof(GPUImage), cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpyToSymbol(textures, &d_normalImgs, size * sizeof(GPUImage*)));
-	delete[] h_normalImgs;
+	//GPUImage* d_imgs;
+	gpuErrchk(cudaMalloc(&d_imgs, size * sizeof(GPUImage)));
+	gpuErrchk(cudaMemcpy(d_imgs, h_imgs, size * sizeof(GPUImage), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpyToSymbol(textures, &d_imgs, size * sizeof(GPUImage*)));
+	delete[] h_imgs;
 }
 
 __device__ glm::vec4 CUDATex2D(const GPUImage& image, const glm::vec2& uv)
@@ -406,25 +413,17 @@ void CUDARenderFrame(int w, int h, float* img, int& h_samples)
 
 void CUDAReset()
 {
-	if (bvh != 0)
+	if (!cudaInit)
 	{
-		gpuErrchk(cudaFree(bvh));
-		bvh = 0;
-	}
+		gpuErrchk(cudaFree(d_nodes));
 
-	if (textures != 0)
-	{
 		for (int i = 0; i < numTextures; i++)
-			gpuErrchk(cudaFree(textures[i].data));
-		gpuErrchk(cudaFree(textures));
-		textures = 0;
-		numTextures = 0;
-	}
-}
+			gpuErrchk(cudaFree(d_texData[i]));
+		d_texData.swap(std::vector<float*>());
+		gpuErrchk(cudaFree(d_imgs));
 
-void CUDAFinish()
-{
-	CUDAReset();
-	if (state)
-		gpuErrchk(cudaFree(state));
+		gpuErrchk(cudaFree(d_state));
+
+		cudaInit = true;
+	}
 }

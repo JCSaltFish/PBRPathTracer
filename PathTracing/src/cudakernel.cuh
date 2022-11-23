@@ -32,6 +32,5 @@ void CUDALoadTextures(const std::vector<Image*>& texVec);
 void CUDARenderFrame(int w, int h, float* img, int& h_samples);
 
 void CUDAReset();
-void CUDAFinish();
 
 #endif
