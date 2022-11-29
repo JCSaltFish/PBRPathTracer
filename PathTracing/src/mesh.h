@@ -16,29 +16,33 @@ const float INF = (float)0xFFFF;
 
 enum class MaterialType
 {
-	DIFFUSE,
-	SPECULAR,
-	GLOSSY,
-	GLASS
+	OPAQUE,
+	TRANSLUCENT
 };
 
 struct Material
 {
 	MaterialType type;
-	glm::vec3 baseColor;
-	float roughness;
+	glm::vec3 diffuse;
+	glm::vec3 specular;
 	glm::vec3 emissive;
 	float emissiveIntensity;
+	float roughness;
+	float reflectiveness;
+	float ior;
 
 	int normalTexId;
 
 	__host__ __device__ Material() :
-		type(MaterialType::DIFFUSE),
-		roughness(0.0f),
+		type(MaterialType::OPAQUE),
 		emissiveIntensity(1.0f),
+		roughness(1.0f),
+		reflectiveness(0.0f),
+		ior(1.5f),
 		normalTexId(-1)
 	{
-		baseColor = glm::vec3(1.0f);
+		diffuse = glm::vec3(1.0f);
+		specular = glm::vec3(1.0f);
 		emissive = glm::vec3(0.0f);
 	}
 };

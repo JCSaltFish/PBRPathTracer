@@ -297,7 +297,7 @@ __device__ glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int& depth, bool& inside,
 		{
 			depth++;
 			// Russian Roulette Path Termination
-			float prob = glm::min(0.95f, glm::max(glm::max(mat.baseColor.x, mat.baseColor.y), mat.baseColor.z));
+			float prob = glm::min(0.95f, glm::max(glm::max(mat.diffuse.x, mat.diffuse.y), mat.diffuse.z));
 			if (depth >= maxDepth)
 			{
 				if (fabs(curand_uniform(&state)) > prob)
@@ -306,56 +306,118 @@ __device__ glm::vec3 Trace(glm::vec3 ro, glm::vec3 rd, int& depth, bool& inside,
 
 			glm::vec3 r = reflect(rd, n);
 			glm::vec3 reflectDir = r;
-			if (mat.type == MaterialType::SPECULAR)
-				reflectDir = r;
-			else if (mat.type == MaterialType::DIFFUSE)
+
+			if (mat.type == MaterialType::OPAQUE)
 			{
-				// Monte Carlo Integration
-				glm::vec3 u = glm::abs(n.x) < 1.0f - EPSILON ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
-				u = glm::normalize(u);
-				glm::vec3 v = glm::normalize(glm::cross(u, n));
-				float w = curand_uniform(&state), theta = curand_uniform(&state);
-				// uniformly sampling on hemisphere
-				reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
-				reflectDir = glm::normalize(reflectDir);
+				if (curand_uniform(&state) < mat.reflectiveness)
+				{
+					if (mat.roughness == 1.0f)
+					{
+						// uniformly sampling on hemisphere
+						glm::vec3 u = fabs(n.x) < 1.0f - EPSILON ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
+						u = glm::normalize(u);
+						glm::vec3 v = glm::normalize(glm::cross(u, n));
+						float w = curand_uniform(&state), theta = curand_uniform(&state);
+						reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * n;
+						reflectDir = glm::normalize(reflectDir);
+					}
+					else if (mat.roughness == 0.0f)
+						reflectDir = r;
+					else
+					{
+						// wighted sampling on hemisphere
+						glm::vec3 u = fabs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
+						u = glm::normalize(u);
+						glm::vec3 v = glm::normalize(glm::cross(u, r));
+						float w = curand_uniform(&state) * mat.roughness, theta = curand_uniform(&state);
+						reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * r;
+						reflectDir = glm::normalize(reflectDir);
+					}
+					return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside, state) * mat.specular;
+				}
+				else
+				{
+					// uniformly sampling on hemisphere
+					glm::vec3 u = fabs(n.x) < 1.0f - EPSILON ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
+					u = glm::normalize(u);
+					glm::vec3 v = glm::normalize(glm::cross(u, n));
+					float w = curand_uniform(&state), theta = curand_uniform(&state);
+					reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * n;
+					reflectDir = glm::normalize(reflectDir);
+
+					return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside, state) * mat.diffuse;
+				}
 			}
-			else if (mat.type == MaterialType::GLOSSY)
+			else
 			{
-				// Monte Carlo Integration
-				glm::vec3 u = fabs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
-				u = glm::normalize(u);
-				glm::vec3 v = glm::cross(u, r);
-				float w = curand_uniform(&state) * mat.roughness, theta = curand_uniform(&state);
-				// wighted sampling on hemisphere
-				reflectDir = w * cosf(2 * PI * theta) * u + w * sinf(2 * PI * theta) * v + sqrtf(1 - w * w) * r;
-			}
-			else if (mat.type == MaterialType::GLASS)
-			{
-				float nc = 1.0f, ng = 1.5f;
+				bool refract = false;
+				glm::vec3 refractN = n;
+				if (mat.roughness != 0.0f)
+				{
+					// wighted sampling on hemisphere
+					glm::vec3 u = fabs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
+					u = glm::normalize(u);
+					glm::vec3 v = glm::normalize(glm::cross(u, r));
+					float w = curand_uniform(&state) * mat.roughness, theta = curand_uniform(&state);
+					refractN = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * n;
+					refractN = glm::normalize(refractN);
+				}
+
+				float nc = 1.0f, ng = mat.ior;
 				// Snells law
 				float eta = inside ? ng / nc : nc / ng;
 				float r0 = (nc - ng) / (nc + ng);
 				r0 = r0 * r0;
-				float c = fabs(glm::dot(rd, n));
+				float c = fabs(glm::dot(rd, refractN));
 				float k = 1.0f - eta * eta * (1.0f - c * c);
 				if (k < 0.0f)
-					reflectDir = r;
+					refract = false;
 				else
 				{
 					// Shilick's approximation of Fresnel's equation
 					float re = r0 + (1.0f - r0) * (1.0f - c) * (1.0f - c);
 					if (fabs(curand_uniform(&state)) < re)
+						refract = false;
+					else if (curand_uniform(&state) < mat.reflectiveness)
+						refract = false;
+					else
+						refract = true;
+				}
+
+				if (!refract)
+				{
+					if (mat.roughness == 1.0f)
+					{
+						// uniformly sampling on hemisphere
+						glm::vec3 u = fabs(n.x) < 1.0f - EPSILON ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
+						u = glm::normalize(u);
+						glm::vec3 v = glm::normalize(glm::cross(u, n));
+						float w = curand_uniform(&state), theta = curand_uniform(&state);
+						reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * n;
+						reflectDir = glm::normalize(reflectDir);
+					}
+					else if (mat.roughness == 0.0f)
 						reflectDir = r;
 					else
 					{
-						reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + sqrtf(k)) * n);
-						p -= n * EPSILON * 2.0f;
-						inside = !inside;
+						// wighted sampling on hemisphere
+						glm::vec3 u = fabs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
+						u = glm::normalize(u);
+						glm::vec3 v = glm::normalize(glm::cross(u, r));
+						float w = curand_uniform(&state) * mat.roughness, theta = curand_uniform(&state);
+						reflectDir = w * cosf(2.0f * PI * theta) * u + w * sinf(2.0f * PI * theta) * v + sqrtf(1.0f - w * w) * r;
+						reflectDir = glm::normalize(reflectDir);
 					}
+					return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside, state) * mat.diffuse * mat.specular;
+				}
+				else
+				{
+					reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + sqrtf(k)) * refractN);
+					p -= n * EPSILON * 2.0f;
+					inside = !inside;
+					return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside, state) * mat.diffuse;
 				}
 			}
-			
-			return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside, state) * mat.baseColor;
 		}
 	}
 

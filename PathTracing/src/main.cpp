@@ -84,7 +84,7 @@ ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "CUDA 1.2.0";
+const std::string version = "CUDA 1.3.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -351,7 +351,15 @@ void LoadScene(const std::string& file)
 			if (fr.eof()) { fr.close(); return; }
 			fr >> z;
 			if (fr.eof()) { fr.close(); return; }
-			m.baseColor = glm::vec3(x, y, z);
+			m.diffuse = glm::vec3(x, y, z);
+
+			fr >> x;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> y;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> z;
+			if (fr.eof()) { fr.close(); return; }
+			m.specular = glm::vec3(x, y, z);
 
 			fr >> x;
 			if (fr.eof()) { fr.close(); return; }
@@ -371,6 +379,12 @@ void LoadScene(const std::string& file)
 			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
 			m.roughness = val;
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+			m.reflectiveness = val;
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+			m.ior = val;
 			if (!std::getline(fr, line)) { fr.close(); return; }
 			if (!std::getline(fr, line)) { fr.close(); return; }
 			previewer.SetNormalTextureForElement(i, j, line);
@@ -511,10 +525,21 @@ void LoadObjectPathsFromSceneFile(const std::string& file)
 			fr >> z;
 			if (fr.eof()) { fr.close(); return; }
 
+			fr >> x;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> y;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> z;
+			if (fr.eof()) { fr.close(); return; }
+
 			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
 
 			fr >> ival;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
 			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
@@ -605,13 +630,17 @@ void SaveAt(std::string path)
 		for (auto& element : obj.elements)
 		{
 			fw << element.name << "\n";
-			v3 = element.material.baseColor;
+			v3 = element.material.diffuse;
+			fw << v3.x << " " << v3.y << " " << v3.z << "\n";
+			v3 = element.material.specular;
 			fw << v3.x << " " << v3.y << " " << v3.z << "\n";
 			v3 = element.material.emissive;
 			fw << v3.x << " " << v3.y << " " << v3.z << "\n";
 			fw << element.material.emissiveIntensity << "\n";
 			fw << (int)element.material.type << "\n";
 			fw << element.material.roughness << "\n";
+			fw << element.material.reflectiveness << "\n";
+			fw << element.material.ior << "\n";
 			fw << element.normalTexFile << "\n";
 		}
 	}
@@ -1670,20 +1699,42 @@ void GuiRightBar()
 						}
 						GuiInputContextMenu();
 
-						ImGui::Text("Base Color");
+						ImGui::Text("Diffuse Color");
 						ImGui::SameLine(160);
 						ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
 						ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(8, 8));
 						ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.13f, 0.13f, 0.13f, 1.0f));
-						v3[0] = objs[i].elements[j].material.baseColor.r;
-						v3[1] = objs[i].elements[j].material.baseColor.g;
-						v3[2] = objs[i].elements[j].material.baseColor.b;
-						idSubStr = "##baseCol" + idStr;
+						v3[0] = objs[i].elements[j].material.diffuse.r;
+						v3[1] = objs[i].elements[j].material.diffuse.g;
+						v3[2] = objs[i].elements[j].material.diffuse.b;
+						idSubStr = "##diffuseCol" + idStr;
 						if (ImGui::ColorEdit3(idSubStr.c_str(), v3,
 							ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoTooltip))
 						{
 							Material& m = objs[i].elements[j].material;
-							m.baseColor = glm::vec3(v3[0], v3[1], v3[2]);
+							m.diffuse = glm::vec3(v3[0], v3[1], v3[2]);
+							previewer.SetMaterial(i, j, m);
+							preview = true;
+							sceneModified = true;
+						}
+						ImGui::PopStyleColor();
+						ImGui::PopStyleVar();
+						ImGui::PopStyleVar();
+
+						ImGui::Text("Specular Color");
+						ImGui::SameLine(160);
+						ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
+						ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(8, 8));
+						ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.13f, 0.13f, 0.13f, 1.0f));
+						v3[0] = objs[i].elements[j].material.specular.r;
+						v3[1] = objs[i].elements[j].material.specular.g;
+						v3[2] = objs[i].elements[j].material.specular.b;
+						idSubStr = "##SpecularCol" + idStr;
+						if (ImGui::ColorEdit3(idSubStr.c_str(), v3,
+							ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoTooltip))
+						{
+							Material& m = objs[i].elements[j].material;
+							m.specular = glm::vec3(v3[0], v3[1], v3[2]);
 							previewer.SetMaterial(i, j, m);
 							preview = true;
 							sceneModified = true;
@@ -1737,7 +1788,7 @@ void GuiRightBar()
 						ImGui::SetNextItemWidth(150);
 						idSubStr = "##mat" + idStr;
 						int iVal = (int)objs[i].elements[j].material.type;
-						const char* items = "Diffuse\0Specular\0Glossy\0Glass";
+						const char* items = "Opaque\0Translucent";
 						if (ImGui::Combo(idSubStr.c_str(), &iVal, items))
 						{
 							Material& m = objs[i].elements[j].material;
@@ -1747,21 +1798,50 @@ void GuiRightBar()
 						}
 
 						val = objs[i].elements[j].material.roughness;
-						if (objs[i].elements[j].material.type == MaterialType::GLOSSY)
+						ImGui::Text("Roughness");
+						ImGui::SameLine(160);
+						ImGui::SetNextItemWidth(150);
+						idSubStr = "##roughness" + idStr;
+						if (ImGui::SliderFloat(idSubStr.c_str(), &val, 0.0f, 1.0f, "%.2f",
+							ImGuiSliderFlags_AlwaysClamp))
 						{
-							ImGui::Text("Roughness");
-							ImGui::SameLine(160);
-							ImGui::SetNextItemWidth(150);
-							idSubStr = "##roughness" + idStr;
-							if (ImGui::SliderFloat(idSubStr.c_str(), &val, 0.0f, 1.0f, "%.2f",
-								ImGuiSliderFlags_AlwaysClamp))
-							{
-								Material& m = objs[i].elements[j].material;
-								m.roughness = val;
-								previewer.SetMaterial(i, j, m);
-								sceneModified = true;
-							}
+							Material& m = objs[i].elements[j].material;
+							m.roughness = val;
+							previewer.SetMaterial(i, j, m);
+							sceneModified = true;
 						}
+
+						val = objs[i].elements[j].material.reflectiveness;
+						ImGui::Text("Reflectiveness");
+						ImGui::SameLine(160);
+						ImGui::SetNextItemWidth(150);
+						idSubStr = "##reflectiveness" + idStr;
+						if (ImGui::SliderFloat(idSubStr.c_str(), &val, 0.0f, 1.0f, "%.2f",
+							ImGuiSliderFlags_AlwaysClamp))
+						{
+							Material& m = objs[i].elements[j].material;
+							m.reflectiveness = val;
+							previewer.SetMaterial(i, j, m);
+							sceneModified = true;
+						}
+
+						val = objs[i].elements[j].material.ior;
+						ImGui::Text("IOR");
+						ImGui::SameLine(160);
+						ImGui::SetNextItemWidth(150);
+						idSubStr = "##ior" + idStr;
+						if (ImGui::InputFloat(idSubStr.c_str(), &val, 0.0f, 0.0f, "%.7f"))
+						{
+							if (val < 1.0f)
+								val = 1.0f;
+							else if (val > 5.0f)
+								val = 5.0f;
+							Material& m = objs[i].elements[j].material;
+							m.ior = val;
+							previewer.SetMaterial(i, j, m);
+							sceneModified = true;
+						}
+						GuiInputContextMenu();
 
 						posY = ImGui::GetCursorPosY();
 						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
@@ -2491,7 +2571,7 @@ void Display()
 					int elementId_loc = glGetUniformLocation(previewShader, "elementId");
 					glUniform1i(elementId_loc, j + 1);
 
-					glm::vec3 color = objs[i].elements[j].material.baseColor;
+					glm::vec3 color = objs[i].elements[j].material.diffuse;
 					if (objs[i].elements[j].highlight)
 						color = previewHighlightColor;
 					else if (objs[i].isSelected)
