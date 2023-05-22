@@ -32,8 +32,20 @@ namespace PreviewerLoader
         GLuint vao;
         GLuint vbo;
         int numTriangles;
+
+        GLuint diffuseTexId;
+        std::string diffuseTexFile;
         GLuint normalTexId;
         std::string normalTexFile;
+        GLuint emissTexId;
+        std::string emissTexFile;
+        GLuint roughnessTexId;
+        std::string roughnessTexFile;
+        GLuint metallicTexId;
+        std::string metallicTexFile;
+        GLuint opacityTexId;
+        std::string opacityTexFile;
+
         Material material;
         bool highlight;
 
@@ -42,8 +54,20 @@ namespace PreviewerLoader
             this->name = name;
             vbo = -1;
             numTriangles = 0;
+
+            diffuseTexId = -1;
+            diffuseTexFile = "";
             normalTexId = -1;
             normalTexFile = "";
+            emissTexId = -1;
+            emissTexFile = "";
+            roughnessTexId = -1;
+            roughnessTexFile = "";
+            metallicTexId = -1;
+            metallicTexFile = "";
+            opacityTexId = -1;
+            opacityTexFile = "";
+
             highlight = false;
         }
     };
@@ -142,6 +166,9 @@ private:
     float mCamFocal;
     float mCamFovy;
 
+    float mCamFocalDist;
+    float mCamF;
+
 public:
     Previewer();
     ~Previewer();
@@ -192,7 +219,14 @@ private:
 public:
     const bool LoadObject(const std::string& filename, int id = -1);
     std::vector<PreviewerLoader::Object> GetLoadedObjects() const;
+
+    void SetDiffuseTextureForElement(int objId, int elementId, const std::string& file);
     void SetNormalTextureForElement(int objId, int elementId, const std::string& file);
+    void SetEmissTextureForElement(int objId, int elementId, const std::string& file);
+    void SetRoughnessTextureForElement(int objId, int elementId, const std::string& file);
+    void SetMetallicTextureForElement(int objId, int elementId, const std::string& file);
+    void SetOpacityTextureForElement(int objId, int elementId, const std::string& file);
+
     void SetMaterial(int objId, int elementId, const Material& m);
 
     void SetLocation(int objId, const glm::vec3& location);
@@ -204,12 +238,16 @@ public:
 
     void SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up);
     void SetProjection(float f, float fovy);
+    void SetCameraFocalDist(float dist);
+    void SetCameraF(float F);
 
     const glm::vec3 CameraPosition() const;
     const glm::vec3 CameraDirection() const;
     const glm::vec3 CameraUp() const;
     const float CameraFovy() const;
     const float CameraFocal() const;
+    const float CameraFocalDist() const;
+    const float CameraF() const;
     const glm::vec3 CameraRotation() const;
     void RotateCamera(const glm::vec3& rotation);
 

@@ -2,38 +2,47 @@
 #include <sstream>
 #include <math.h>
 
-#include <omp.h>
-
 #include <tiny_obj_loader.h>
 
 #include "pathtracer.h"
 
 PathTracer::PathTracer() : mRng(std::random_device()())
 {
-	mOutImg = 0;
-	mTotalImg = 0;
+	//mOutImg = 0;
+	//mTotalImg = 0;
 	mMaxDepth = 3;
 
 	mCamDir = glm::vec3(0.0f, 0.0f, 1.0f);
 	mCamUp = glm::vec3(0.0f, 1.0f, 0.0f);
-	mCamFocal = 0.1f;
-	mCamFovy = 90;
+	mCamFocal = 0.05f;
+	mCamFovy = 90.0f;
+
+	mCamFocalDist = 5.0f;
+	mCamAperture = 0.0f;
 
 	mSamples = 0;
 	mNeedReset = false;
 	mExit = false;
+
+	m_GPUOutImage = -1;
+	m_GPUProgram = -1;
+
+	m_GPUMaterialsSSBO = -1;
+	m_GPUTrianglesSSBO = -1;
+	m_GPUBVHSSBO = -1;
+	m_GPULightsourcesSSBO = -1;
+	m_GPUTexSizesSSBO = -1;
+
+	m_GPUPathTracerUBO = -1;
+	m_GPUCameraUBO = -1;
+
+	m_GPUTextures = -1;
 }
 
 PathTracer::~PathTracer()
 {
-	if (mTotalImg)
-		delete[] mTotalImg;
-
-	if (mBvh)
-		delete mBvh;
-
-	for (auto texture : mLoadedTextures)
-		delete texture;
+	ClearScene();
+	GPUClearScene();
 }
 
 void PathTracer::LoadObject(const std::string& file, const glm::mat4& model)
@@ -135,23 +144,107 @@ void PathTracer::LoadObject(const std::string& file, const glm::mat4& model)
 				t.objectId = mLoadedObjects.size();
 				t.elementId = i;
 
-				mTriangles.push_back(t);
+				t.id = mTriangles.size();
+
+				GPUTriangle tri;
+				tri.v1 = glm::vec4(t.v1, 1.f);
+				tri.v2 = glm::vec4(t.v2, 1.f);
+				tri.v3 = glm::vec4(t.v3, 1.f);
+				tri.n1 = glm::vec4(t.n1, 1.f);
+				tri.n2 = glm::vec4(t.n2, 1.f);
+				tri.n3 = glm::vec4(t.n3, 1.f);
+				tri.normal = glm::vec4(t.normal, 1.f);
+				tri.tangent = glm::vec4(t.tangent, 1.f);
+				tri.bitangent = glm::vec4(t.bitangent, 1.f);
+				tri.uv1 = t.uv1;
+				tri.uv2 = t.uv2;
+				tri.uv3 = t.uv3;
+				tri.barycentric_v0 = glm::vec4(t.barycentricInfo.v0, 1.f);
+				tri.barycentric_v1 = glm::vec4(t.barycentricInfo.v1, 1.f);
+				tri.barycentric_d00 = t.barycentricInfo.d00;
+				tri.barycentric_d01 = t.barycentricInfo.d01;
+				tri.barycentric_d11 = t.barycentricInfo.d11;
+				tri.barycentric_invDenom = t.barycentricInfo.invDenom;
+				tri.smoothing = t.smoothing;
+				tri.id = t.id;
+				tri.objectId = t.objectId;
+				tri.elementId = t.elementId;
+				mTriangles.push_back(tri);
 			}
 		}
 		mLoadedObjects.push_back(obj);
 	}
 }
 
-void PathTracer::SetNormalTextureForElement(int objId, int elementId, const std::string& file)
+void PathTracer::SetDiffuseTextureForElement(int objId, int elementId, GLuint texture)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.diffuseTexId != -1)
+		mTextures[mat.diffuseTexId] = texture;
+	else
+	{
+		mat.diffuseTexId = mTextures.size();
+		mTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetNormalTextureForElement(int objId, int elementId, GLuint texture)
 {
 	Material& mat = mLoadedObjects[objId].elements[elementId].material;
 	if (mat.normalTexId != -1)
-		mLoadedTextures[mat.normalTexId]->Load(file);
+		mTextures[mat.normalTexId] = texture;
 	else
 	{
-		Image* texture = new Image(file);
-		mat.normalTexId = mLoadedTextures.size();
-		mLoadedTextures.push_back(texture);
+		mat.normalTexId = mTextures.size();
+		mTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetEmissTextureForElement(int objId, int elementId, GLuint texture)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.emissTexId != -1)
+		mTextures[mat.emissTexId] = texture;
+	else
+	{
+		mat.emissTexId = mTextures.size();
+		mTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetRoughnessTextureForElement(int objId, int elementId, GLuint texture)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.roughnessTexId != -1)
+		mTextures[mat.roughnessTexId] = texture;
+	else
+	{
+		mat.roughnessTexId = mTextures.size();
+		mTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetMetallicTextureForElement(int objId, int elementId, GLuint texture)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.metallicTexId != -1)
+		mTextures[mat.metallicTexId] = texture;
+	else
+	{
+		mat.metallicTexId = mTextures.size();
+		mTextures.push_back(texture);
+	}
+}
+
+void PathTracer::SetOpacityTextureForElement(int objId, int elementId, GLuint texture)
+{
+	Material& mat = mLoadedObjects[objId].elements[elementId].material;
+	if (mat.opacityTexId != -1)
+		mTextures[mat.opacityTexId] = texture;
+	else
+	{
+		mat.opacityTexId = mTextures.size();
+		mTextures.push_back(texture);
 	}
 }
 
@@ -162,7 +255,12 @@ void PathTracer::SetMaterial(int objId, int elementId, Material& material)
 	if (elementId >= mLoadedObjects[objId].elements.size())
 		return;
 
+	material.diffuseTexId = mLoadedObjects[objId].elements[elementId].material.diffuseTexId;
 	material.normalTexId = mLoadedObjects[objId].elements[elementId].material.normalTexId;
+	material.emissTexId = mLoadedObjects[objId].elements[elementId].material.emissTexId;
+	material.roughnessTexId = mLoadedObjects[objId].elements[elementId].material.roughnessTexId;
+	material.metallicTexId = mLoadedObjects[objId].elements[elementId].material.metallicTexId;
+	material.opacityTexId = mLoadedObjects[objId].elements[elementId].material.opacityTexId;
 
 	mLoadedObjects[objId].elements[elementId].material = material;
 }
@@ -172,7 +270,7 @@ void PathTracer::BuildBVH()
 	if (mBvh)
 		delete mBvh;
 	mBvh = new BVHNode();
-	mBvh->Construct(mTriangles);
+	mBvh->Construct(mTriangles, mTriangles.size());
 }
 
 void PathTracer::ResetImage()
@@ -182,29 +280,17 @@ void PathTracer::ResetImage()
 
 void PathTracer::ClearScene()
 {
-	mTriangles.swap(std::vector<Triangle>());
+	mTriangles.swap(std::vector<GPUTriangle>());
 	mLoadedObjects.swap(std::vector<PathTracerLoader::Object>());
 	if (mBvh)
 		delete mBvh;
 	mBvh = 0;
-	for (auto texture : mLoadedTextures)
-		delete texture;
-	mLoadedTextures.swap(std::vector<Image*>());
-
-	if (mTotalImg)
-		delete[] mTotalImg;
-	mTotalImg = 0;
-}
-
-void PathTracer::SetOutImage(GLubyte* out)
-{
-	mOutImg = out;
+	mTextures.swap(std::vector<GLuint>());
 }
 
 void PathTracer::SetResolution(const glm::ivec2& res)
 {
 	mResolution = res;
-	mTotalImg = new float[res.x * res.y * 3];
 }
 
 std::vector<PathTracerLoader::Object> PathTracer::GetLoadedObjects() const
@@ -251,6 +337,16 @@ void PathTracer::SetProjection(float f, float fovy)
 		mCamFovy = 179.5;
 }
 
+void PathTracer::SetCameraFocalDist(float dist)
+{
+	mCamFocalDist = dist;
+}
+
+void PathTracer::SetCameraAperture(float aperture)
+{
+	mCamAperture = aperture;
+}
+
 const int PathTracer::GetSamples() const
 {
 	return mSamples;
@@ -292,173 +388,258 @@ const glm::vec3 PathTracer::GetSmoothNormal(const glm::vec3& p, const Triangle& 
 	return glm::normalize(n);
 }
 
-const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int depth, bool inside)
+void PathTracer::Exit()
 {
-	float d = 0.0f;
-	Triangle t;
-	if (mBvh->Hit(ro, rd, t, d))
+	mExit = true;
+}
+
+void PathTracer::GPUSetOutImage(GLuint texture)
+{
+	m_GPUOutImage = texture;
+}
+
+void PathTracer::GPUSetProgram(GLuint program)
+{
+	m_GPUProgram = program;
+}
+
+void PathTracer::GPUBuildScene()
+{
+	glUseProgram(m_GPUProgram);
+
+	// 0. Materials
+	std::vector<GPUMaterial> materials;
+	for (auto& obj : mLoadedObjects)
 	{
-		Material& mat = mLoadedObjects[t.objectId].elements[t.elementId].material;
-		glm::vec3 p = ro + rd * d;
-		glm::vec2 uv = GetUV(p, t);
-		glm::vec3 n = t.normal;
-		if (t.smoothing)
-			n = GetSmoothNormal(p, t);
-		if (glm::dot(n, rd) > 0.0f)
-			n = -n;
-		if (mat.normalTexId != -1)
+		for (auto& e : obj.elements)
 		{
-			glm::mat3 TBN = glm::mat3(t.tangent, t.bitangent, n);
-			glm::vec3 nt = glm::vec3(mLoadedTextures[mat.normalTexId]->tex2D(uv)) * 2.0f - 1.0f;
-			if (nt.z < 0.0f)
-				nt = glm::vec3(nt.x, nt.y, 0.0f);
-			nt = glm::normalize(nt);
-			n = glm::normalize(TBN * nt);
-		}
-		p += n * EPS;
-
-		if (depth < mMaxDepth * 2)
-		{
-			depth++;
-			// Russian Roulette Path Termination
-			float prob = glm::min(0.95f, glm::max(glm::max(mat.baseColor.x, mat.baseColor.y), mat.baseColor.z));
-			if (depth >= mMaxDepth)
-			{
-				if (glm::abs(Rand()) > prob)
-					return mat.emissive * mat.emissiveIntensity;
-			}
-
-			glm::vec3 r = glm::reflect(rd, n);
-			glm::vec3 reflectDir;
-			if (mat.type == MaterialType::SPECULAR)
-				reflectDir = r;
-			else if (mat.type == MaterialType::DIFFUSE)
-			{
-				// Monte Carlo Integration
-				glm::vec3 u = glm::abs(n.x) < 1.0f - EPS ? glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), n) : glm::cross(glm::vec3(1.0f), n);
-				u = glm::normalize(u);
-				glm::vec3 v = glm::normalize(glm::cross(u, n));
-				float w = Rand(), theta = Rand();
-				// uniformly sampling on hemisphere
-				reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + glm::sqrt(1.0f - w * w) * n;
-				reflectDir = glm::normalize(reflectDir);
-			}
-			else if (mat.type == MaterialType::GLOSSY)
-			{
-				// Monte Carlo Integration
-				glm::vec3 u = glm::abs(n.x) < 1 - FLT_EPSILON ? glm::cross(glm::vec3(1, 0, 0), r) : glm::cross(glm::vec3(1), r);
-				u = glm::normalize(u);
-				glm::vec3 v = glm::cross(u, r);
-				float w = Rand() * mat.roughness, theta = Rand();
-				// wighted sampling on hemisphere
-				reflectDir = w * cosf(2 * M_PI * theta) * u + w * sinf(2 * M_PI * theta) * v + glm::sqrt(1 - w * w) * r;
-			}
-			else if (mat.type == MaterialType::GLASS)
-			{
-				float nc = 1.0f, ng = 1.5f;
-				// Snells law
-				float eta = inside ? ng / nc : nc / ng;
-				float r0 = glm::pow((nc - ng) / (nc + ng), 2.0f);
-				float c = glm::abs(glm::dot(rd, n));
-				float k = 1.0f - eta * eta * (1.0f - c * c);
-				if (k < 0.0f)
-					reflectDir = r;
-				else
-				{
-					// Shilick's approximation of Fresnel's equation
-					float re = r0 + (1.0f - r0) * glm::pow(1.0f - c, 2.0f);
-					if (glm::abs(Rand()) < re)
-						reflectDir = r;
-					else
-					{
-						reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + glm::sqrt(k)) * n);
-						p -= n * EPS * 2.0f;
-						inside = !inside;
-					}
-				}
-			}
-
-			return mat.emissive * mat.emissiveIntensity + Trace(p, reflectDir, depth, inside) * mat.baseColor;
+			GPUMaterial m;
+			m.translucent = e.material.type == MaterialType::TRANSLUCENT;
+			m.diffuseTexId = e.material.diffuseTexId;
+			m.normalTexId = e.material.normalTexId;
+			m.emissTexId = e.material.emissTexId;
+			m.roughnessTexId = e.material.roughnessTexId;
+			m.metallicTexId = e.material.metallicTexId;
+			m.opacityTexId = e.material.opacityTexId;
+			m.diffuse = glm::vec4(e.material.diffuse, 1.f);
+			m.specular = glm::vec4(e.material.specular, 1.f);
+			m.emissive = glm::vec4(e.material.emissive, 1.f);
+			m.emissIntensity = e.material.emissiveIntensity;
+			m.roughness = e.material.roughness;
+			m.reflectiveness = e.material.reflectiveness;
+			m.translucency = e.material.translucency;
+			m.ior = e.material.ior;
+			e.material.id = materials.size();
+			materials.push_back(m);
 		}
 	}
 
-	return glm::vec3(0.0f);
+	if (m_GPUMaterialsSSBO != -1)
+		glDeleteBuffers(1, &m_GPUMaterialsSSBO);
+	glGenBuffers(1, &m_GPUMaterialsSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPUMaterialsSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, materials.size() * sizeof(GPUMaterial), materials.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_GPUMaterialsSSBO);
+
+	// Textures
+	std::vector<glm::ivec2> sizes(mTextures.size());
+	glm::ivec2 maxSize(0);
+	for (int i = 0; i < mTextures.size(); i++)
+	{
+		glBindTexture(GL_TEXTURE_2D, mTextures[i]);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &sizes[i].x);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &sizes[i].y);
+		maxSize.x = std::max(maxSize.x, sizes[i].x);
+		maxSize.y = std::max(maxSize.y, sizes[i].y);
+	}
+
+	if (m_GPUTextures != -1)
+		glDeleteTextures(1, &m_GPUTextures);
+	glGenTextures(1, &m_GPUTextures);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, m_GPUTextures);
+	glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGB8, maxSize.x, maxSize.y, mTextures.size());
+	GLenum error;
+	while ((error = glGetError()) != GL_NO_ERROR)
+	{
+		GLint totalMemoryKB = 0;
+		glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemoryKB);
+		GLint currentMemoryKB = 0;
+		glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &currentMemoryKB);
+		GLint dedicatedMemoryKB = 0;
+		glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &dedicatedMemoryKB);
+		float totalMemoryMB = static_cast<float>(totalMemoryKB) / 1024.0f;
+		float currentMemoryMB = static_cast<float>(currentMemoryKB) / 1024.0f;
+		float dedicatedMemoryMB = static_cast<float>(dedicatedMemoryKB) / 1024.0f;
+
+		printf("OpenGL Error\n");
+	}
+	for (int i = 0; i < mTextures.size(); i++)
+	{
+		glBindTexture(GL_TEXTURE_2D, mTextures[i]);
+		glCopyImageSubData(mTextures[i], GL_TEXTURE_2D, 0, 0, 0, 0,
+			m_GPUTextures, GL_TEXTURE_2D_ARRAY, 0, 0, 0, i, sizes[i].x, sizes[i].y, 1);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+	glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+	if (m_GPUTexSizesSSBO != -1)
+		glDeleteBuffers(1, &m_GPUTexSizesSSBO);
+	glGenBuffers(1, &m_GPUTexSizesSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPUTexSizesSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizes.size() * sizeof(glm::ivec2), sizes.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, m_GPUTexSizesSSBO);
+
+	// 1. BVH
+	std::vector<int> lightsources;
+
+	for (auto& t : mTriangles)
+	{
+		auto& m = mLoadedObjects[t.objectId].elements[t.elementId].material;
+		t.materialId = m.id;
+		if (glm::length(m.emissive) >= EPS)
+			lightsources.push_back(t.id);
+	}
+
+	if (m_GPUTrianglesSSBO != -1)
+		glDeleteBuffers(1, &m_GPUTrianglesSSBO);
+	glGenBuffers(1, &m_GPUTrianglesSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPUTrianglesSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, mTriangles.size() * sizeof(GPUTriangle), mTriangles.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, m_GPUTrianglesSSBO);
+
+	if (m_GPULightsourcesSSBO != -1)
+		glDeleteBuffers(1, &m_GPULightsourcesSSBO);
+	glGenBuffers(1, &m_GPULightsourcesSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPULightsourcesSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, lightsources.size() * sizeof(int), lightsources.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, m_GPULightsourcesSSBO);
+	glUniform1i(0, lightsources.size());
+
+	BuildBVH();
+	std::vector<GPUBVHNode> bvh;
+	mBvh->GetGPULayout(bvh);
+	mTriangles.swap(std::vector<GPUTriangle>());
+	delete mBvh;
+	mBvh = 0;
+
+	if (m_GPUBVHSSBO != -1)
+		glDeleteBuffers(1, &m_GPUBVHSSBO);
+	glGenBuffers(1, &m_GPUBVHSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPUBVHSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, bvh.size() * sizeof(GPUBVHNode), bvh.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, m_GPUBVHSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	// 2. Path Tracer
+	if (m_GPUPathTracerUBO != -1)
+		glDeleteBuffers(1, &m_GPUPathTracerUBO);
+	glGenBuffers(1, &m_GPUPathTracerUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, m_GPUPathTracerUBO);
+	GPUPathTracerUniforms pathTracerUniforms;
+	pathTracerUniforms.resolution = mResolution;
+	pathTracerUniforms.maxDepth = mMaxDepth;
+	pathTracerUniforms.samples = mSamples;
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUPathTracerUniforms), &pathTracerUniforms, GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 1, m_GPUPathTracerUBO);
+
+	// 3. Camera
+	if (m_GPUCameraUBO != -1)
+		glDeleteBuffers(1, &m_GPUCameraUBO);
+	glGenBuffers(1, &m_GPUCameraUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, m_GPUCameraUBO);
+	GPUCameraUniforms cameraUniforms;
+	cameraUniforms.camPos = glm::vec4(mCamPos, 1.f);
+	cameraUniforms.camDir = glm::vec4(mCamDir, 1.f);
+	cameraUniforms.camUp = glm::vec4(mCamUp, 1.f);
+	cameraUniforms.camFocal = mCamFocal;
+	cameraUniforms.camFovy = mCamFovy;
+	cameraUniforms.camFocalDist = mCamFocalDist;
+	cameraUniforms.camAperture = mCamAperture;
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUCameraUniforms), &cameraUniforms, GL_STATIC_DRAW);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_GPUCameraUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-void PathTracer::RenderFrame()
+void PathTracer::GPURenderFrame()
 {
 	mExit = false;
 
 	if (mNeedReset)
 	{
-		for (int i = 0; i < mResolution.x * mResolution.y * 3; i++)
-			mTotalImg[i] = 0.0f;
 		mNeedReset = false;
-        mSamples = 0;
+		mSamples = 0;
 	}
 
 	mSamples++;
 
-	// Position world space image plane
-	glm::vec3 imgCenter = mCamPos + mCamDir * mCamFocal;
-	float imgHeight = 2.0f * mCamFocal * tan((mCamFovy / 2.0f) * M_PI / 180.0f);
-	float aspect = (float)mResolution.x / (float)mResolution.y;
-	float imgWidth = imgHeight * aspect;
-	float deltaX = imgWidth / (float)mResolution.x;
-	float deltaY = imgHeight / (float)mResolution.y;
-	glm::vec3 camRight = glm::normalize(glm::cross(mCamUp, mCamDir));
+	glUseProgram(m_GPUProgram);
 
-	// Starting at top left
-	glm::vec3 topLeft = imgCenter - camRight * (imgWidth * 0.5f);
-	topLeft += mCamUp * (imgHeight * 0.5f);
+	glBindBuffer(GL_UNIFORM_BUFFER, m_GPUPathTracerUBO);
+	GPUPathTracerUniforms pathTracerUniforms;
+	pathTracerUniforms.resolution = mResolution;
+	pathTracerUniforms.maxDepth = mMaxDepth;
+	pathTracerUniforms.samples = mSamples;
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUPathTracerUniforms), &pathTracerUniforms, GL_DYNAMIC_DRAW);
 
-	int numThreads = omp_get_max_threads();
-	if (numThreads > 2)
-		numThreads -= 3;
-	else if (numThreads > 1)
-		numThreads -= 2;
-	else if (numThreads > 0)
-		numThreads--;
-	// Loop through each pixel
-	#pragma omp parallel for num_threads(numThreads)
-	for (int i = 0; i < mResolution.y; i++)
-	{
-		if (mExit)
-			break;
+	glBindImageTexture(0, m_GPUOutImage, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
-		glm::vec3 pixel = topLeft - mCamUp * ((float)i * deltaY);
-		for (int j = 0; j < mResolution.x; j++)
-		{
-			glm::vec3 rayDir = glm::normalize(pixel - mCamPos);
-			float seed = 0.0f;
+	glActiveTexture(GL_TEXTURE0 + 1);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, m_GPUTextures);
+	glUniform1i(1, 1);
 
-			glm::vec3 color = Trace(mCamPos, rayDir);
+	GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
-			// Draw
-			int imgPixel = ((mResolution.y - 1 - i) * mResolution.x + j) * 3;
+	glDispatchCompute(ceil(float(mResolution.x) / 32.), ceil(float(mResolution.y) / 32.), 1);
 
-			mTotalImg[imgPixel] += color.r;
-			mTotalImg[imgPixel + 1] += color.g;
-			mTotalImg[imgPixel + 2] += color.b;
+	glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 5000000000);
+	glDeleteSync(fence);
 
-			glm::vec3 res = glm::vec3
-			(
-				mTotalImg[imgPixel] / (float)mSamples,
-				mTotalImg[imgPixel + 1] / (float)mSamples,
-				mTotalImg[imgPixel + 2] / (float)mSamples
-			);
-			res = glm::clamp(res, glm::vec3(0.0f), glm::vec3(1.0f));
-
-			mOutImg[imgPixel] = res.r * 255;
-			mOutImg[imgPixel + 1] = res.g * 255;
-			mOutImg[imgPixel + 2] = res.b * 255;
-
-			pixel += camRight * deltaX;
-		}
-	}
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 }
 
-void PathTracer::Exit()
+void PathTracer::GPUClearScene()
 {
-	mExit = true;
+	if (m_GPUMaterialsSSBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUMaterialsSSBO);
+		m_GPUMaterialsSSBO = -1;
+	}
+	if (m_GPUTrianglesSSBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUTrianglesSSBO);
+		m_GPUTrianglesSSBO = -1;
+	}
+	if (m_GPUBVHSSBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUBVHSSBO);
+		m_GPUBVHSSBO = -1;
+	}
+	if (m_GPULightsourcesSSBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPULightsourcesSSBO);
+		m_GPULightsourcesSSBO = -1;
+	}
+	if (m_GPUTexSizesSSBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUTexSizesSSBO);
+		m_GPUTexSizesSSBO = -1;
+	}
+
+	if (m_GPUPathTracerUBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUPathTracerUBO);
+		m_GPUPathTracerUBO = -1;
+	}
+
+	if (m_GPUCameraUBO != -1)
+	{
+		glDeleteBuffers(1, &m_GPUCameraUBO);
+		m_GPUCameraUBO = -1;
+	}
+
+	if (m_GPUTextures != -1)
+	{
+		glDeleteTextures(1, &m_GPUTextures);
+		m_GPUTextures = -1;
+	}
 }

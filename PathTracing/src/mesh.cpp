@@ -77,34 +77,37 @@ void Triangle::Init()
 	glm::vec2 deltaUv2 = uv3 - uv1;
 	float f = 1.0f / (deltaUv1.x * deltaUv2.y - deltaUv2.x * deltaUv1.y);
 
-	tangent.x = f * (deltaUv2.y * e1.x - deltaUv1.y * e2.x);
-	tangent.y = f * (deltaUv2.y * e1.y - deltaUv1.y * e2.y);
-	tangent.z = f * (deltaUv2.y * e1.z - deltaUv1.y * e2.z);
+	float nx = e1.y * e2.z - e1.z * e2.y;
+	float ny = e1.z * e2.x - e1.x * e2.z;
+	float nz = e1.x * e2.y - e1.y * e2.x;
+	normal = glm::normalize(glm::vec3(nx, ny, nz));
 
-	bitangent.x = f * (-deltaUv2.x * e1.x + deltaUv1.x * e2.x);
-	bitangent.y = f * (-deltaUv2.x * e1.y + deltaUv1.x * e2.y);
-	bitangent.z = f * (-deltaUv2.x * e1.z + deltaUv1.x * e2.z);
+	float tx = f * (deltaUv2.y * e1.x - deltaUv1.y * e2.x);
+	float ty = f * (deltaUv2.y * e1.y - deltaUv1.y * e2.y);
+	float tz = f * (deltaUv2.y * e1.z - deltaUv1.y * e2.z);
+	tangent = glm::normalize(glm::vec3(tx, ty, tz));
 
-	normal = glm::cross(e1, e2);
-
-	tangent = glm::normalize(tangent);
-	bitangent = glm::normalize(bitangent);
-	normal = glm::normalize(normal);
+	bitangent = glm::normalize(glm::cross(normal, tangent));
 }
 
 BVHNode::BVHNode()
 {
+	mTriangleId = -1;
+
 	mLeft = 0;
 	mRight = 0;
 
 	mRandAxis = std::uniform_int_distribution<int>(0, 2);
 }
 
-BVHNode::BVHNode(const Triangle& t) : mTriangle(t)
+BVHNode::BVHNode(const GPUTriangle& t)
 {
-	mBox.Build(t.v1);
-	mBox.Build(t.v2);
-	mBox.Build(t.v3);
+	mBox.Build(glm::vec3(t.v1));
+	mBox.Build(glm::vec3(t.v2));
+	mBox.Build(glm::vec3(t.v3));
+	mBox.Check();
+
+	mTriangleId = t.id;
 
 	mLeft = 0;
 	mRight = 0;
@@ -120,16 +123,16 @@ BVHNode::~BVHNode()
 		delete mRight;
 }
 
-bool BVHNode::TriXCompare(const Triangle& a, const Triangle& b)
+bool BVHNode::TriXCompare(const GPUTriangle& a, const GPUTriangle& b)
 {
 	AABB boxA, boxB;
-	boxA.Build(a.v1);
-	boxA.Build(a.v2);
-	boxA.Build(a.v3);
+	boxA.Build(glm::vec3(a.v1));
+	boxA.Build(glm::vec3(a.v2));
+	boxA.Build(glm::vec3(a.v3));
 	boxA.Check();
-	boxB.Build(b.v1);
-	boxB.Build(b.v2);
-	boxB.Build(b.v3);
+	boxB.Build(glm::vec3(b.v1));
+	boxB.Build(glm::vec3(b.v2));
+	boxB.Build(glm::vec3(b.v3));
 	boxB.Check();
 
 	if (boxA.min.x > boxB.min.x)
@@ -138,16 +141,16 @@ bool BVHNode::TriXCompare(const Triangle& a, const Triangle& b)
 		return false;
 }
 
-bool BVHNode::TriYCompare(const Triangle& a, const Triangle& b)
+bool BVHNode::TriYCompare(const GPUTriangle& a, const GPUTriangle& b)
 {
 	AABB boxA, boxB;
-	boxA.Build(a.v1);
-	boxA.Build(a.v2);
-	boxA.Build(a.v3);
+	boxA.Build(glm::vec3(a.v1));
+	boxA.Build(glm::vec3(a.v2));
+	boxA.Build(glm::vec3(a.v3));
 	boxA.Check();
-	boxB.Build(b.v1);
-	boxB.Build(b.v2);
-	boxB.Build(b.v3);
+	boxB.Build(glm::vec3(b.v1));
+	boxB.Build(glm::vec3(b.v2));
+	boxB.Build(glm::vec3(b.v3));
 	boxB.Check();
 
 	if (boxA.min.y > boxB.min.y)
@@ -156,16 +159,16 @@ bool BVHNode::TriYCompare(const Triangle& a, const Triangle& b)
 		return false;
 }
 
-bool BVHNode::TriZCompare(const Triangle& a, const Triangle& b)
+bool BVHNode::TriZCompare(const GPUTriangle& a, const GPUTriangle& b)
 {
 	AABB boxA, boxB;
-	boxA.Build(a.v1);
-	boxA.Build(a.v2);
-	boxA.Build(a.v3);
+	boxA.Build(glm::vec3(a.v1));
+	boxA.Build(glm::vec3(a.v2));
+	boxA.Build(glm::vec3(a.v3));
 	boxA.Check();
-	boxB.Build(b.v1);
-	boxB.Build(b.v2);
-	boxB.Build(b.v3);
+	boxB.Build(glm::vec3(b.v1));
+	boxB.Build(glm::vec3(b.v2));
+	boxB.Build(glm::vec3(b.v3));
 	boxB.Check();
 
 	if (boxA.min.z > boxB.min.z)
@@ -174,41 +177,39 @@ bool BVHNode::TriZCompare(const Triangle& a, const Triangle& b)
 		return false;
 }
 
-BVHNode* BVHNode::Construct(std::vector<Triangle>& triangles)
+BVHNode* BVHNode::Construct(std::vector<GPUTriangle>& triangles, int size, int offset)
 {
 	std::random_device rd;
 	int axis = mRandAxis(std::mt19937(rd()));
 	if (axis == 0)
-		std::sort(triangles.begin(), triangles.end(), TriXCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriXCompare);
 	else if (axis == 1)
-		std::sort(triangles.begin(), triangles.end(), TriYCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriYCompare);
 	else
-		std::sort(triangles.begin(), triangles.end(), TriZCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriZCompare);
 
-	if (triangles.size() == 0)
+	if (size == 0)
 		return this;
-	else if (triangles.size() == 1)
+	else if (size == 1)
 	{
-		mLeft = new BVHNode(triangles[0]);
-		mRight = new BVHNode(triangles[0]);
+		mLeft = new BVHNode(triangles[offset]);
+		mRight = new BVHNode(triangles[offset]);
 	}
-	else if (triangles.size() == 2)
+	else if (size == 2)
 	{
-		mLeft = new BVHNode(triangles[0]);
-		mRight = new BVHNode(triangles[1]);
+		mLeft = new BVHNode(triangles[offset]);
+		mRight = new BVHNode(triangles[offset + 1]);
 	}
 	else
 	{
-		std::vector<Triangle> left, right;
-		int i = 0;
-		for (; i < triangles.size() / 2; i++)
-			left.push_back(triangles[i]);
-		for (; i < triangles.size(); i++)
-			right.push_back(triangles[i]);
+		int leftOffset = offset;
+		int leftSize = size / 2;
+		int rightOffset = offset + leftSize;
+		int rightSize = size - leftSize;
 		BVHNode* nodeLeft = new BVHNode();
 		BVHNode* nodeRight = new BVHNode();
-		mLeft = nodeLeft->Construct(left);
-		mRight = nodeRight->Construct(right);
+		mLeft = nodeLeft->Construct(triangles, leftSize, leftOffset);
+		mRight = nodeRight->Construct(triangles, rightSize, rightOffset);
 	}
 	
 	mBox.Build(mLeft->mBox.min);
@@ -236,64 +237,33 @@ const bool BVHNode::IsInside(const glm::vec3& p, const glm::vec3& a, const glm::
 	return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
 }
 
-const bool BVHNode::Hit(const glm::vec3& ro, const glm::vec3& rd, Triangle& triangleOut, float& distOut)
+void BVHNode::GetGPULayout(std::vector<GPUBVHNode>& bvh)
 {
-	if (mLeft && mRight)
-	{
-		if (mBox.Intersect(ro, rd))
-		{
-			Triangle tLeft, tRight;
-			float dLeft, dRight;
-			bool hitLeft = mLeft->Hit(ro, rd, tLeft, dLeft);
-			bool hitRight = mRight->Hit(ro, rd, tRight, dRight);
-			if (hitLeft && hitRight)
-			{
-				if (dLeft < dRight)
-				{
-					triangleOut = tLeft;
-					distOut = dLeft;
-				}
-				else
-				{
-					triangleOut = tRight;
-					distOut = dRight;
-				}
-				return true;
-			}
-			else if (hitLeft)
-			{
-				triangleOut = tLeft;
-				distOut = dLeft;
-				return true;
-			}
-			else if (hitRight)
-			{
-				triangleOut = tRight;
-				distOut = dRight;
-				return true;
-			}
-			else
-				return false;
-		}
-		else
-			return false;
-	}
-	else
-	{
-		if (glm::dot(rd, mTriangle.normal) == 0.0f)
-			return false;
-		distOut = glm::dot((mTriangle.v1 - ro), mTriangle.normal) / glm::dot(rd, mTriangle.normal);
-		if (distOut < 0)
-			return false;
-		// update intersection point
-		glm::vec3 p = ro + rd * distOut;
+	GPUBVHNode node;
+	node.rightOffset = -1;
+	node.aabb_min = glm::vec4(mBox.min, 1.f);
+	node.aabb_max = glm::vec4(mBox.max, 1.f);
+	node.triangleId = mTriangleId;
 
-        if (IsInside(p, mTriangle.v1, mTriangle.v2, mTriangle.v3)) {
-            triangleOut = mTriangle;
-            return true;
-        }
-        return false;
-	}
+	int nodePos = bvh.size();
+	node.nodeIndex = nodePos;
+	bvh.push_back(node);
+	int offset = -1;
 
-	return false;
+	// offset for leaf node is -1
+	if (!mLeft && !mRight)
+		return;
+
+	if (mLeft)
+		mLeft->GetGPULayout(bvh);
+
+	if (mRight)
+	{
+		offset = bvh.size() - nodePos;
+		mRight->GetGPULayout(bvh);
+	}
+	else // left only
+		offset = 0;
+
+	bvh[nodePos].rightOffset = offset;
 }

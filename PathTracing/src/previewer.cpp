@@ -10,8 +10,10 @@ Previewer::Previewer()
     mCamPos = glm::vec3(0.0f, 0.0f, -10.0f);
     mCamDir = glm::vec3(0.0f, 0.0f, 1.0f);
     mCamUp = glm::vec3(0.0f, 1.0f, 0.0f);
-    mCamFocal = 0.1f;
-    mCamFovy = 90;
+    mCamFocal = 0.05f;
+    mCamFovy = 70;
+    mCamFocalDist = 5.0f;
+    mCamF = 32;
 }
 
 Previewer::~Previewer()
@@ -555,13 +557,39 @@ void Previewer::FreeObject(int objId)
 
     for (auto& element : mLoadedObjects[objId].elements)
     {
-        GLuint& tex = element.normalTexId;
-        if (tex != -1)
-            glDeleteTextures(1, &tex);
+        if (element.diffuseTexId != -1)
+            glDeleteTextures(1, &element.diffuseTexId);
+        if (element.normalTexId != -1)
+            glDeleteTextures(1, &element.normalTexId);
+        if (element.emissTexId != -1)
+            glDeleteTextures(1, &element.emissTexId);
+        if (element.roughnessTexId != -1)
+            glDeleteTextures(1, &element.roughnessTexId);
+        if (element.metallicTexId != -1)
+            glDeleteTextures(1, &element.metallicTexId);
+        if (element.opacityTexId != -1)
+            glDeleteTextures(1, &element.opacityTexId);
 
         glDeleteBuffers(1, &element.vbo);
         glDeleteVertexArrays(1, &element.vao);
     }
+}
+
+void Previewer::SetDiffuseTextureForElement(int objId, int elementId, const std::string& file)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+    if (elementId >= mLoadedObjects[objId].elements.size())
+        return;
+
+    GLuint& tex = mLoadedObjects[objId].elements[elementId].diffuseTexId;
+    if (tex != -1)
+    {
+        glDeleteTextures(1, &tex);
+        tex = -1;
+    }
+    tex = LoadTexture(file);
+    mLoadedObjects[objId].elements[elementId].diffuseTexFile = file;
 }
 
 void Previewer::SetNormalTextureForElement(int objId, int elementId, const std::string& file)
@@ -577,10 +605,76 @@ void Previewer::SetNormalTextureForElement(int objId, int elementId, const std::
         glDeleteTextures(1, &tex);
         tex = -1;
     }
-    if (file.size() == 0)
-        return;
     tex = LoadTexture(file);
     mLoadedObjects[objId].elements[elementId].normalTexFile = file;
+}
+
+void Previewer::SetEmissTextureForElement(int objId, int elementId, const std::string& file)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+    if (elementId >= mLoadedObjects[objId].elements.size())
+        return;
+
+    GLuint& tex = mLoadedObjects[objId].elements[elementId].emissTexId;
+    if (tex != -1)
+    {
+        glDeleteTextures(1, &tex);
+        tex = -1;
+    }
+    tex = LoadTexture(file);
+    mLoadedObjects[objId].elements[elementId].emissTexFile = file;
+}
+
+void Previewer::SetRoughnessTextureForElement(int objId, int elementId, const std::string& file)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+    if (elementId >= mLoadedObjects[objId].elements.size())
+        return;
+
+    GLuint& tex = mLoadedObjects[objId].elements[elementId].roughnessTexId;
+    if (tex != -1)
+    {
+        glDeleteTextures(1, &tex);
+        tex = -1;
+    }
+    tex = LoadTexture(file);
+    mLoadedObjects[objId].elements[elementId].roughnessTexFile = file;
+}
+
+void Previewer::SetMetallicTextureForElement(int objId, int elementId, const std::string& file)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+    if (elementId >= mLoadedObjects[objId].elements.size())
+        return;
+
+    GLuint& tex = mLoadedObjects[objId].elements[elementId].metallicTexId;
+    if (tex != -1)
+    {
+        glDeleteTextures(1, &tex);
+        tex = -1;
+    }
+    tex = LoadTexture(file);
+    mLoadedObjects[objId].elements[elementId].metallicTexFile = file;
+}
+
+void Previewer::SetOpacityTextureForElement(int objId, int elementId, const std::string& file)
+{
+    if (objId >= mLoadedObjects.size())
+        return;
+    if (elementId >= mLoadedObjects[objId].elements.size())
+        return;
+
+    GLuint& tex = mLoadedObjects[objId].elements[elementId].opacityTexId;
+    if (tex != -1)
+    {
+        glDeleteTextures(1, &tex);
+        tex = -1;
+    }
+    tex = LoadTexture(file);
+    mLoadedObjects[objId].elements[elementId].opacityTexFile = file;
 }
 
 void Previewer::SetMaterial(int objId, int elementId, const Material& m)
@@ -681,14 +775,26 @@ void Previewer::SendObjectsToPathTracer(PathTracer* pPathTracer)
         for (int j = 0; j < mLoadedObjects[i].elements.size(); j++)
         {
             pPathTracer->SetMaterial(i, j, mLoadedObjects[i].elements[j].material);
-            if (mLoadedObjects[i].elements[j].normalTexId != -1)
-            {
-                pPathTracer->SetNormalTextureForElement(i, j,
-                    mLoadedObjects[i].elements[j].normalTexFile);
-            }
+            GLuint texId = mLoadedObjects[i].elements[j].diffuseTexId;
+            if (texId != -1)
+                pPathTracer->SetDiffuseTextureForElement(i, j, texId);
+            texId = mLoadedObjects[i].elements[j].normalTexId;
+            if (texId != -1)
+                pPathTracer->SetNormalTextureForElement(i, j, texId);
+            texId = mLoadedObjects[i].elements[j].emissTexId;
+            if (texId != -1)
+                pPathTracer->SetEmissTextureForElement(i, j, texId);
+            texId = mLoadedObjects[i].elements[j].roughnessTexId;
+            if (texId != -1)
+                pPathTracer->SetRoughnessTextureForElement(i, j, texId);
+            texId = mLoadedObjects[i].elements[j].metallicTexId;
+            if (texId != -1)
+                pPathTracer->SetMetallicTextureForElement(i, j, texId);
+            texId = mLoadedObjects[i].elements[j].opacityTexId;
+            if (texId != -1)
+                pPathTracer->SetOpacityTextureForElement(i, j, texId);
         }
     }
-    pPathTracer->BuildBVH();
 }
 
 void Previewer::SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up)
@@ -708,6 +814,16 @@ void Previewer::SetProjection(float f, float fovy)
         mCamFovy = 0.1f;
     else if (mCamFovy >= 180.0f)
         mCamFovy = 179.5;
+}
+
+void Previewer::SetCameraFocalDist(float dist)
+{
+    mCamFocalDist = dist;
+}
+
+void Previewer::SetCameraF(float F)
+{
+    mCamF = F;
 }
 
 const glm::vec3 Previewer::CameraPosition() const
@@ -776,10 +892,22 @@ const float Previewer::CameraFocal() const
     return mCamFocal;
 }
 
+const float Previewer::CameraFocalDist() const
+{
+    return mCamFocalDist;
+}
+
+const float Previewer::CameraF() const
+{
+    return mCamF;
+}
+
 void Previewer::SetPathTracerCamera(PathTracer* pPathTracer)
 {
     pPathTracer->SetCamera(mCamPos, mCamDir, mCamUp);
     pPathTracer->SetProjection(mCamFocal, mCamFovy);
+    pPathTracer->SetCameraFocalDist(mCamFocalDist);
+    pPathTracer->SetCameraAperture(mCamFocal / mCamF);
 }
 
 const int Previewer::GetTriangleCount() const
