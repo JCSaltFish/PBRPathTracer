@@ -1,0 +1,559 @@
+#version 450
+
+layout(local_size_x = 32, local_size_y = 32) in;
+
+layout(binding = 0, rgba32f) uniform image2D imgOut;
+
+layout(binding = 1) uniform PathTracerUniforms
+{
+    ivec2 resolution;
+    int maxDepth;
+    int samples;
+} PathTracer;
+
+layout(binding = 2) uniform CameraUniforms
+{
+    vec4 camPos;
+    vec4 camDir;
+    vec4 camUp;
+    float camFocal;
+    float camFovy;
+	float camFocalDist;
+	float camAperture;
+} Camera;
+
+struct Material
+{
+	vec4 diffuse;
+	vec4 specular;
+	vec4 emissive;
+
+	float emissIntensity;
+	float roughness;
+	float reflectiveness;
+	float translucency;
+
+	float ior;
+	int translucent;
+	int diffuseTexId;
+	int normalTexId;
+
+	int emissTexId;
+	int roughnessTexId;
+	int metallicTexId;
+	int opacityTexId;
+};
+
+layout(std430, binding = 3) restrict readonly buffer MATERIALS
+{
+	Material materials[];
+};
+
+struct Triangle
+{
+	vec4 v1;
+	vec4 v2;
+	vec4 v3;
+	vec4 n1;
+	vec4 n2;
+	vec4 n3;
+	vec4 normal;
+	vec4 tangent;
+	vec4 bitangent;
+
+	vec2 uv1;
+	vec2 uv2;
+
+	vec2 uv3;
+	int objectId;
+	int elementId;
+
+	vec4 barycentric_v0;
+	vec4 barycentric_v1;
+
+	float barycentric_d00;
+	float barycentric_d01;
+	float barycentric_d11;
+	float barycentric_invDenom;
+
+	int smoothing;
+	int id;
+	int materialId;
+	int padding;
+};
+
+layout(std430, binding = 4) restrict readonly buffer TRIANGLES
+{
+	Triangle triangles[];
+};
+
+struct BVHNode
+{
+    int nodeIndex;
+	int rightOffset;
+	int triangleId;
+	int padding;
+
+	vec4 aabb_min;
+	vec4 aabb_max;
+};
+
+layout(std430, binding = 5) restrict readonly buffer BVH
+{
+	BVHNode nodes[];
+};
+
+layout(std430, binding = 6) restrict readonly buffer LIGHTS
+{
+	int lightsources[];
+};
+layout(location = 0) uniform int numLightsources;
+
+layout(location = 1) uniform sampler2DArray textures;
+layout(std430, binding = 7) restrict readonly buffer TEX_SIZES
+{
+	ivec2 texSizes[];
+};
+
+const float PI = 3.141592654;
+const float EPSILON = 0.001;
+
+float randSeed;
+vec2 randState;
+float Rand()
+{
+	randSeed++;
+    return fract(sin(randSeed / PathTracer.samples * dot(randState, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec2 GetUV(vec3 p, int nodeIndex)
+{
+	Triangle t = triangles[nodes[nodeIndex].triangleId];
+	vec3 v2 = p - t.v1.xyz;
+	float d20 = dot(v2, t.barycentric_v0.xyz);
+	float d21 = dot(v2, t.barycentric_v1.xyz);
+
+	float alpha = (t.barycentric_d11 * d20 - t.barycentric_d01 * d21) * t.barycentric_invDenom;
+	float beta = (t.barycentric_d00 * d21 - t.barycentric_d01 * d20) * t.barycentric_invDenom;
+
+	return (1.0 - alpha - beta) * t.uv1 + alpha * t.uv2 + beta * t.uv3;
+}
+
+vec3 GetSmoothNormal(vec3 p, int nodeIndex)
+{
+	Triangle t = triangles[nodes[nodeIndex].triangleId];
+	vec3 v2 = p - t.v1.xyz;
+	float d20 = dot(v2, t.barycentric_v0.xyz);
+	float d21 = dot(v2, t.barycentric_v1.xyz);
+
+	float alpha = (t.barycentric_d11 * d20 - t.barycentric_d01 * d21) * t.barycentric_invDenom;
+	float beta = (t.barycentric_d00 * d21 - t.barycentric_d01 * d20) * t.barycentric_invDenom;
+
+	vec3 n = (1.0 - alpha - beta) * t.n1.xyz + alpha * t.n2.xyz + beta * t.n3.xyz;
+	vec3 res = normalize(vec3(n.x, -n.y, n.z));
+	return normalize(n);
+}
+
+bool IsSameSide(vec3 p1, vec3 p2, vec3 a, vec3 b)
+{
+    vec3 ba = b - a;
+	vec3 cp1 = cross(ba, (p1 - a));
+	vec3 cp2 = cross(ba, (p2 - a));
+	return (dot(cp1, cp2) >= 0);
+}
+bool IntersectTriangle(vec3 p, vec3 a, vec3 b, vec3 c)
+{
+    return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
+}
+
+bool IntersectBox(vec3 ro, vec3 rd, vec3 bMin, vec3 bMax)
+{
+    vec3 tMin = (bMin - ro) / rd;
+	vec3 tMax = (bMax - ro) / rd;
+	vec3 t1 = min(tMin, tMax);
+	vec3 t2 = max(tMin, tMax);
+	float tNear = max(max(t1.x, t1.y), t1.z);
+	float tFar = min(min(t2.x, t2.y), t2.z);
+	if (tNear >= tFar)
+		return false;
+	return true;
+}
+
+bool Hit(vec3 ro, vec3 rd, out int nodeIndex, out float dist)
+{
+    bool result = false;
+
+    dist = float(0xFFFF);
+
+    int stack[64];
+    int pStack = 0;
+    stack[pStack++] = -1;
+
+    int currIndex = 0;
+    do
+    {
+        if (IntersectBox(ro, rd, nodes[currIndex].aabb_min.xyz, nodes[currIndex].aabb_max.xyz))
+        {
+            if (nodes[currIndex].rightOffset == -1) // leaf
+            {
+				Triangle t = triangles[nodes[currIndex].triangleId];
+                if (dot(rd, t.normal.xyz) != 0.0)
+				{
+					float d = dot((t.v1.xyz - ro), t.normal.xyz) / dot(rd, t.normal.xyz);
+					if (d >= 0)
+					{
+						vec3 p = ro + rd * d;
+						if (IntersectTriangle(p, t.v1.xyz, t.v2.xyz, t.v3.xyz))
+						{
+							// Opacity
+							bool tmpResult = true;
+							int opacTexId = materials[t.materialId].opacityTexId;
+							if (opacTexId != -1)
+							{
+								vec2 uv = GetUV(p, currIndex);
+								vec2 texCoord = uv * texSizes[opacTexId] /
+									textureSize(textures, 0).xy;
+								float opacity = texture(textures, vec3(texCoord, opacTexId)).r;
+								tmpResult = Rand() < opacity;
+							}
+
+							if (d < dist && tmpResult)
+							{
+								dist = d;
+								nodeIndex = currIndex;
+								result = true;
+							}
+						}
+					}
+				}
+                currIndex = stack[--pStack];
+            }
+            else // interier
+            {
+                int left = nodes[currIndex].nodeIndex + 1;
+                int right = nodes[currIndex].nodeIndex + nodes[currIndex].rightOffset;
+                currIndex = left;
+                stack[pStack++] = right;
+            }
+        }
+        else
+            currIndex = stack[--pStack];
+    }
+    while (pStack > 0 && pStack < 64);
+
+    return result;
+}
+
+vec3 SampleTriangle(vec3 v0, vec3 v1, vec3 v2)
+{
+	float u = sqrt(Rand());
+	float v = Rand();
+	float w0 = 1. - u;
+	float w1 = u * (1. - v);
+	float w2 = u * v;
+	return w0 * v0 + w1 * v1 + w2 * v2;
+}
+
+vec3 DirectIllumimation(vec3 rd, vec3 p, vec3 n, vec3 diffuse)
+{
+	// sample a light triangle
+	int lightId = int(floor(Rand() * numLightsources));
+	if (lightId == numLightsources && lightId > 0)
+		lightId--;
+	Triangle tLight = triangles[lightsources[lightId]];
+	// sample a point inside the triangle
+	vec3 vLight = SampleTriangle(tLight.v1.xyz, tLight.v2.xyz, tLight.v3.xyz);
+	// evaluate the shadow ray
+	vec3 l = normalize(vLight - p);
+	float d = 0.0;
+    int nodeIndex = -1;
+	if (Hit(p, l, nodeIndex, d))
+	{
+		if (tLight.id != nodes[nodeIndex].triangleId)
+			return vec3(0.);
+	}
+
+	Material mLight = materials[tLight.materialId];
+	vec3 lColor = mLight.emissive.rgb * mLight.emissIntensity;
+
+	return lColor * diffuse * max(0., dot(-n, -l));
+}
+
+vec4 Trace(vec3 ro, vec3 rd)
+{
+    vec3 color = vec3(0.);
+
+    bool inside = false;
+    vec3 atten = vec3(1.);
+	int maxDepth = PathTracer.maxDepth;
+    for (int i = 0; i < maxDepth; i++)
+    {
+        float d = 0.0;
+        int nodeIndex = -1;
+        if (Hit(ro, rd, nodeIndex, d))
+        {
+			Triangle t = triangles[nodes[nodeIndex].triangleId];
+			Material m = materials[t.materialId];
+
+            vec3 p = ro + rd * d;
+            vec2 uv = GetUV(p, nodeIndex);
+            vec3 n = t.normal.xyz;
+            if (t.smoothing == 1)
+			    n = GetSmoothNormal(p, nodeIndex);
+            if (m.normalTexId != -1)
+		    {
+			    mat3 TBN = mat3(t.tangent.xyz, t.bitangent.xyz, n);
+				vec2 texCoord = uv * texSizes[m.normalTexId] / textureSize(textures, 0).xy;
+				vec3 nt = texture(textures, vec3(texCoord, m.normalTexId)).rgb * 2.0 - 1.0;
+			    if (nt.z <= 0.)
+				    nt = vec3(nt.x, nt.y, EPSILON);
+			    nt = normalize(nt);
+				n = normalize(TBN * nt);
+		    }
+		    if (dot(n, rd) > 0.)
+			    n = -n;
+		    p += n * EPSILON;
+			
+			vec3 diffuse = m.diffuse.rgb;
+			if (m.diffuseTexId != -1)
+			{
+				vec2 texCoord = uv * texSizes[m.diffuseTexId] / textureSize(textures, 0).xy;
+				diffuse = texture(textures, vec3(texCoord, m.diffuseTexId)).rgb;
+			}
+			vec3 emiss = m.emissive.rgb;
+			if (m.emissTexId != -1)
+			{
+				vec2 texCoord = uv * texSizes[m.emissTexId] / textureSize(textures, 0).xy;
+				emiss = texture(textures, vec3(texCoord, m.emissTexId)).rgb;
+			}
+			float roughness = m.roughness;
+			if (m.roughnessTexId != -1)
+			{
+				vec2 texCoord = uv * texSizes[m.roughnessTexId] / textureSize(textures, 0).xy;
+				roughness = texture(textures, vec3(texCoord, m.roughnessTexId)).r;
+			}
+			float reflectiveness = m.reflectiveness;
+			if (m.metallicTexId != -1)
+			{
+				vec2 texCoord = uv * texSizes[m.metallicTexId] / textureSize(textures, 0).xy;
+				reflectiveness = texture(textures, vec3(texCoord, m.metallicTexId)).r;
+			}
+
+            vec3 r = reflect(rd, n);
+            vec3 reflectDir = r;
+
+            if (m.translucent == 0)
+            {
+                if (Rand() < reflectiveness)
+				{
+					if (roughness == 1.)
+					{
+						// uniformly sampling on hemisphere
+						vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), n) : cross(vec3(1.), n);
+						u = normalize(u);
+						vec3 v = normalize(cross(u, n));
+						float w = Rand(), theta = Rand();
+						reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * n;
+						reflectDir = normalize(reflectDir);
+					}
+					else if (roughness == 0.)
+						reflectDir = r;
+					else
+					{
+						// wighted sampling on hemisphere
+						vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), r) : cross(vec3(1.), r);
+						u = normalize(u);
+						vec3 v = normalize(cross(u, r));
+						float w = Rand() * roughness, theta = Rand();
+						reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * r;
+						reflectDir = normalize(reflectDir);
+					}
+					
+					color += emiss.xyz * m.emissIntensity * atten;
+                    ro = p;
+                    rd = reflectDir;
+                    atten *= m.specular.xyz;
+					maxDepth++;
+				}
+                else
+				{
+					// uniformly sampling on hemisphere
+					vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), n) : cross(vec3(1.), n);
+					u = normalize(u);
+					vec3 v = normalize(cross(u, n));
+					float w = Rand(), theta = Rand();
+					reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * n;
+					reflectDir = normalize(reflectDir);
+
+                    color += DirectIllumimation(rd, p, n, diffuse) * atten;
+					color += emiss.xyz * m.emissIntensity * atten;
+                    ro = p;
+                    rd = reflectDir;
+                    atten *= diffuse;
+				}
+            }
+            else
+            {
+                bool bRefract = false;
+				vec3 refractN = n;
+				if (roughness != 0.)
+				{
+					// wighted sampling on hemisphere
+					vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), r) : cross(vec3(1.), r);
+					u = normalize(u);
+					vec3 v = normalize(cross(u, r));
+					float w = Rand() * roughness, theta = Rand();
+					refractN = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * n;
+					refractN = normalize(refractN);
+				}
+
+                float nc = 1., ng = m.ior;
+				// Snells law
+				float eta = inside ? ng / nc : nc / ng;
+				float r0 = (nc - ng) / (nc + ng);
+				r0 = r0 * r0;
+				float c = abs(dot(rd, refractN));
+				float k = 1. - eta * eta * (1. - c * c);
+				if (k < 0.)
+					bRefract = false;
+				else
+				{
+					// Shilick's approximation of Fresnel's equation
+					float re = r0 + (1. - r0) * (1. - c) * (1. - c);
+					if (abs(Rand()) < re)
+						bRefract = false;
+					else if (Rand() < reflectiveness)
+						bRefract = false;
+					else
+						bRefract = true;
+				}
+
+				maxDepth++;
+                if (!bRefract)
+				{
+					if (roughness == 1.)
+					{
+						// uniformly sampling on hemisphere
+						vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), n) : cross(vec3(1.), n);
+						u = normalize(u);
+						vec3 v = normalize(cross(u, n));
+						float w = Rand(), theta = Rand();
+						reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * n;
+						reflectDir = normalize(reflectDir);
+					}
+					else if (roughness == 0.)
+						reflectDir = r;
+					else
+					{
+						// wighted sampling on hemisphere
+						vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), r) : cross(vec3(1.), r);
+						u = normalize(u);
+						vec3 v = normalize(cross(u, r));
+						float w = Rand() * roughness, theta = Rand();
+						reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * r;
+						reflectDir = normalize(reflectDir);
+					}
+
+					color += emiss.xyz * m.emissIntensity * atten;
+                    ro = p;
+                    rd = reflectDir;
+                    atten *= m.specular.xyz;
+				}
+				else
+				{
+					if (Rand() < m.translucency)
+					{
+						reflectDir = normalize(eta * rd - (eta * dot(n, rd) + sqrt(k)) * refractN);
+						p -= n * EPSILON * 2.;
+						inside = !inside;
+
+						color += emiss.xyz * m.emissIntensity * atten;
+						ro = p;
+						rd = reflectDir;
+						atten *= diffuse;
+					}
+					else
+					{
+						// uniformly sampling on hemisphere
+						vec3 u = abs(n.x) < 1. - EPSILON ? cross(vec3(1.,0.,0.), n) : cross(vec3(1.), n);
+						u = normalize(u);
+						vec3 v = normalize(cross(u, n));
+						float w = Rand(), theta = Rand();
+						reflectDir = w * cos(2. * PI * theta) * u + w * sin(2. * PI * theta) * v + sqrt(1. - w * w) * n;
+						reflectDir = normalize(reflectDir);
+
+						color += DirectIllumimation(rd, p, n, diffuse) * atten;
+						color += emiss.xyz * m.emissIntensity * atten;
+						ro = p;
+						rd = reflectDir;
+						atten *= diffuse;
+					}
+				}
+            }
+
+			// Russian Roulette Path Termination
+			float prob = min(0.95, max(max(diffuse.r, diffuse.g), diffuse.b));
+			if (i + 1 >= PathTracer.maxDepth)
+			{
+				if (abs(Rand()) > prob)
+					break;
+			}
+        }
+        else
+            break;
+    }
+
+    return vec4(color, 1.);
+}
+
+vec2 SampleCircle()
+{
+	float angle = Rand() * 2. * PI;
+	float radius = sqrt(Rand());
+	return vec2(cos(angle), sin(angle)) * radius;
+}
+
+void main()
+{
+	uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= PathTracer.resolution.x || y >= PathTracer.resolution.y)
+        return;
+
+    // Position world space image plane
+    vec3 imgCenter = Camera.camPos.xyz + Camera.camDir.xyz * Camera.camFocal;
+    float imgHeight = 2. * Camera.camFocal * tan((Camera.camFovy / 2.) * PI / 180.);
+    float aspect = float(PathTracer.resolution.x) / float(PathTracer.resolution.y);
+    float imgWidth = imgHeight * aspect;
+    float deltaX = imgWidth / float(PathTracer.resolution.x);
+    float deltaY = imgHeight / float(PathTracer.resolution.y);
+    vec3 camRight = normalize(cross(Camera.camUp.xyz, Camera.camDir.xyz));
+
+    vec3 topLeft = imgCenter - camRight * (imgWidth * 0.5);
+    topLeft += Camera.camUp.xyz * (imgHeight * 0.5f);
+    vec3 pixel = topLeft - Camera.camUp.xyz * (float(y) * deltaY) + camRight * (float(x) * deltaX);
+	
+	y = PathTracer.resolution.y - y - 1;
+    vec2 fragCoord = vec2(float(x) / float(PathTracer.resolution.x), float(y) / float(PathTracer.resolution.y));
+	
+	vec3 camPos = Camera.camPos.xyz;
+    vec3 rayDir = normalize(pixel - camPos);
+	randState = vec2(x, y);
+
+	// DOF
+	vec3 focalPoint = camPos + rayDir * Camera.camFocalDist;
+	vec2 camPosOffset = SampleCircle() * Camera.camAperture;
+	camPos += camRight * camPosOffset.x + Camera.camUp.xyz * camPosOffset.y;
+	rayDir = normalize(focalPoint - camPos);
+
+    int depth = 0;
+    vec4 color = Trace(camPos, rayDir);
+
+    // Draw
+	if (PathTracer.samples != 1)
+	{
+		color += vec4(imageLoad(imgOut, ivec2(x, y)).rgb * (PathTracer.samples - 1), 0.);
+		barrier();
+	}
+	imageStore(imgOut, ivec2(x, y), vec4(color.rgb / float(PathTracer.samples), 1.));
+}

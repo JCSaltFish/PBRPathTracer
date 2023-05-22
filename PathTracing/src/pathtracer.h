@@ -10,25 +10,6 @@
 
 #include "mesh.h"
 
-enum class MaterialType
-{
-	DIFFUSE,
-	SPECULAR,
-	GLOSSY,
-	GLASS
-};
-
-struct Material
-{
-	MaterialType type = MaterialType::DIFFUSE;
-	glm::vec3 baseColor = glm::vec3(1.0f);
-	float roughness = 0.0f;
-	glm::vec3 emissive = glm::vec3(0.0f);
-	float emissiveIntensity = 1.0f;
-
-	int normalTexId = -1;
-};
-
 namespace PathTracerLoader
 {
 	struct Element
@@ -91,8 +72,6 @@ private:
 	bool mNeedReset;
 	bool mExit;
 
-	std::mt19937 mRng;
-
 	GLuint m_GPUOutImage;
 	GLuint m_GPUProgram;
 
@@ -128,7 +107,6 @@ public:
 	~PathTracer();
 
 private:
-	const float Rand();
 	const glm::vec2 GetUV(const glm::vec3& p, const Triangle& t) const;
 	const glm::vec3 GetSmoothNormal(const glm::vec3& p, const Triangle& t) const;
 

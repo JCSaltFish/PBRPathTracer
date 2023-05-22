@@ -6,10 +6,8 @@
 
 #include "pathtracer.h"
 
-PathTracer::PathTracer() : mRng(std::random_device()())
+PathTracer::PathTracer()
 {
-	//mOutImg = 0;
-	//mTotalImg = 0;
 	mMaxDepth = 3;
 
 	mCamDir = glm::vec3(0.0f, 0.0f, 1.0f);
@@ -350,12 +348,6 @@ void PathTracer::SetCameraAperture(float aperture)
 const int PathTracer::GetSamples() const
 {
 	return mSamples;
-}
-
-const float PathTracer::Rand()
-{
-	std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-	return dis(mRng);
 }
 
 const glm::vec2 PathTracer::GetUV(const glm::vec3& p, const Triangle& t) const
