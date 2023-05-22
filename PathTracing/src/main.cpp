@@ -3400,8 +3400,6 @@ void InitializeFrame()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
-
-	//pathTracer.SetOutImage(texData);
 }
 
 void InitializeGLFrame()
@@ -3524,7 +3522,7 @@ void InitializePathTracer()
 	glfwMakeContextCurrent(computeWindow);
 
 	std::vector<GLuint> shaderList;
-	shaderList.push_back(CreateShader(GL_COMPUTE_SHADER, LoadShader("shaders/pathtracer.comp")));
+	shaderList.push_back(CreateShader(GL_COMPUTE_SHADER, compPt));
 	computeProgram = CreateProgram(shaderList);
 	std::for_each(shaderList.begin(), shaderList.end(), glDeleteShader);
 	pathTracer.GPUSetProgram(computeProgram);

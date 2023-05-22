@@ -1,9 +1,5 @@
-#include <string>
-#include <vector>
 #include <fstream>
 #include <sstream>
-
-#include <GL/glew.h>
 
 #include "shaders.h"
 

@@ -1,6 +1,13 @@
 #ifndef __shaders_h__
 #define __shaders_h__
 
+#include <string>
+#include <vector>
+
+#include <GL/glew.h>
+
+#include "compute_shader.h"
+
 std::string LoadShader(const std::string& strShaderFilename);
 GLuint CreateShader(GLenum eShaderType, const std::string& strShaderFile);
 GLuint CreateProgram(const std::vector<GLuint>& shaderList);

@@ -101,6 +101,7 @@
     <ClInclude Include="resource.h">
       <Filter>Resources</Filter>
     </ClInclude>
+    <ClInclude Include="src\compute_shader.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="assets\icon.ico">

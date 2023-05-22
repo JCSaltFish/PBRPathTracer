@@ -52,6 +52,7 @@
     <ClInclude Include="..\imgui\misc\cpp\imgui_stdlib.h" />
     <ClInclude Include="..\tinyfiledialogs\tinyfiledialogs.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="src\compute_shader.h" />
     <ClInclude Include="src\icon.h" />
     <ClInclude Include="src\image.h" />
     <ClInclude Include="src\mesh.h" />
