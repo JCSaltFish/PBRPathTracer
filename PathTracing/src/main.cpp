@@ -4,9 +4,6 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 
-#ifdef _DEBUG
-#include <iostream>
-#endif
 #include <string>
 #include <vector>
 #include <fstream>
@@ -57,8 +54,9 @@ GLint hWindow = hRender + menuHeight + toolbarHeight + statusBarHeight;
 
 GLuint appIconTex = -1;
 
-GLuint quadShader;
-GLuint previewShader;
+GLuint quadShader = -1;
+GLuint previewShader = -1;
+GLuint previewMaterialUBO = -1;
 
 GLuint quadVao = -1;
 GLuint fbo = -1;
@@ -73,7 +71,7 @@ ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "1.3.0";
+const std::string version = "2.0.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -181,6 +179,8 @@ void ClearScene()
 
 	previewer.SetCamera(glm::vec3(0.0f, 0.0f, -10.0f),
 		previewer.CameraDirection(), previewer.CameraUp());
+	previewer.SetCameraFocalDist(5.0f);
+	previewer.SetCameraF(32.0f);
 	previewer.RotateCamera(glm::vec3(0.0f));
 }
 
@@ -279,6 +279,13 @@ void LoadScene(const std::string& file)
 	if (fr.eof()) { fr.close(); return; }
 	previewer.RotateCamera(glm::vec3(x, y, z));
 
+	fr >> val;
+	if (fr.eof()) { fr.close(); return; }
+	previewer.SetCameraFocalDist(val);
+	fr >> val;
+	if (fr.eof()) { fr.close(); return; }
+	previewer.SetCameraF(val);
+
 	int nObjs = 0;
 	fr >> nObjs;
 	if (fr.eof()) { fr.close(); return; }
@@ -371,10 +378,23 @@ void LoadScene(const std::string& file)
 			m.reflectiveness = val;
 			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
+			m.translucency = val;
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
 			m.ior = val;
 			if (!std::getline(fr, line)) { fr.close(); return; }
 			if (!std::getline(fr, line)) { fr.close(); return; }
+			previewer.SetDiffuseTextureForElement(i, j, line);
+			if (!std::getline(fr, line)) { fr.close(); return; }
 			previewer.SetNormalTextureForElement(i, j, line);
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			previewer.SetEmissTextureForElement(i, j, line);
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			previewer.SetRoughnessTextureForElement(i, j, line);
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			previewer.SetMetallicTextureForElement(i, j, line);
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			previewer.SetOpacityTextureForElement(i, j, line);
 
 			previewer.SetMaterial(i, j, m);
 		}
@@ -441,6 +461,11 @@ void LoadObjectPathsFromSceneFile(const std::string& file)
 	fr >> z;
 	if (fr.eof()) { fr.close(); return; }
 	previewer.RotateCamera(glm::vec3(x, y, z));
+
+	fr >> val;
+	if (fr.eof()) { fr.close(); return; }
+	fr >> val;
+	if (fr.eof()) { fr.close(); return; }
 
 	int nObjs = 0;
 	fr >> nObjs;
@@ -530,6 +555,13 @@ void LoadObjectPathsFromSceneFile(const std::string& file)
 			if (fr.eof()) { fr.close(); return; }
 			fr >> val;
 			if (fr.eof()) { fr.close(); return; }
+			fr >> val;
+			if (fr.eof()) { fr.close(); return; }
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			if (!std::getline(fr, line)) { fr.close(); return; }
+			if (!std::getline(fr, line)) { fr.close(); return; }
 			if (!std::getline(fr, line)) { fr.close(); return; }
 			if (!std::getline(fr, line)) { fr.close(); return; }
 		}
@@ -1457,6 +1489,30 @@ void GuiRightBar()
 		if (!(init || stop) || render)
 			ImGui::BeginDisabled();
 
+		float fv = previewer.CameraFocalDist();
+		ImGui::Text("Focal Distance");
+		ImGui::SameLine(160);
+		ImGui::SetNextItemWidth(150);
+		if (ImGui::SliderFloat("##focalDist", &fv, 0.f, 5.f, "%.2f",
+			ImGuiSliderFlags_AlwaysClamp))
+		{
+			previewer.SetCameraFocalDist(fv);
+			sceneModified = true;
+		}
+		GuiInputContextMenu();
+
+		fv = previewer.CameraF();
+		ImGui::Text("Camera F");
+		ImGui::SameLine(160);
+		ImGui::SetNextItemWidth(150);
+		if (ImGui::SliderFloat("##cameraF", &fv, 1.f, 32.f, "%.2f",
+			ImGuiSliderFlags_AlwaysClamp))
+		{
+			previewer.SetCameraF(fv);
+			sceneModified = true;
+		}
+		GuiInputContextMenu();
+
 		float v3[3] = {};
 		v3[0] = previewer.CameraPosition().x;
 		v3[1] = previewer.CameraPosition().y;
@@ -1800,29 +1856,46 @@ void GuiRightBar()
 							sceneModified = true;
 						}
 
-						val = objs[i].elements[j].material.ior;
-						ImGui::Text("IOR");
-						ImGui::SameLine(160);
-						ImGui::SetNextItemWidth(150);
-						idSubStr = "##ior" + idStr;
-						if (ImGui::InputFloat(idSubStr.c_str(), &val, 0.0f, 0.0f, "%.7f"))
+						if (objs[i].elements[j].material.type == MaterialType::TRANSLUCENT)
 						{
-							if (val < 1.0f)
-								val = 1.0f;
-							else if (val > 5.0f)
-								val = 5.0f;
-							Material& m = objs[i].elements[j].material;
-							m.ior = val;
-							previewer.SetMaterial(i, j, m);
-							sceneModified = true;
+							val = objs[i].elements[j].material.translucency;
+							ImGui::Text("Translucency");
+							ImGui::SameLine(160);
+							ImGui::SetNextItemWidth(150);
+							idSubStr = "##translucency" + idStr;
+							if (ImGui::SliderFloat(idSubStr.c_str(), &val, 0.0f, 1.0f, "%.2f",
+								ImGuiSliderFlags_AlwaysClamp))
+							{
+								Material& m = objs[i].elements[j].material;
+								m.translucency = val;
+								previewer.SetMaterial(i, j, m);
+								sceneModified = true;
+							}
+
+							val = objs[i].elements[j].material.ior;
+							ImGui::Text("IOR");
+							ImGui::SameLine(160);
+							ImGui::SetNextItemWidth(150);
+							idSubStr = "##ior" + idStr;
+							if (ImGui::InputFloat(idSubStr.c_str(), &val, 0.0f, 0.0f, "%.7f"))
+							{
+								if (val < 1.0f)
+									val = 1.0f;
+								else if (val > 5.0f)
+									val = 5.0f;
+								Material& m = objs[i].elements[j].material;
+								m.ior = val;
+								previewer.SetMaterial(i, j, m);
+								sceneModified = true;
+							}
+							GuiInputContextMenu();
 						}
-						GuiInputContextMenu();
 
 						posY = ImGui::GetCursorPosY();
 						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
-						ImGui::Text("Normal Texture");
+						ImGui::Text("Diffuse Texture");
 
-						GLuint texId = objs[i].elements[j].normalTexId;
+						GLuint texId = objs[i].elements[j].diffuseTexId;
 						ImGui::SameLine(160);
 						ImGui::SetCursorPosY(posY);
 						ImGui::Image((void*)texId, ImVec2(50, 50));
@@ -1831,6 +1904,48 @@ void GuiRightBar()
 						ImGui::PushFont(normalIconFont);
 						ImGui::SameLine();
 						int posX = ImGui::GetCursorPosX();
+						ImGui::SetCursorPosY(posY);
+						idSubStr = "Load##diffuseTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							std::string imgPath = LoadImage();
+							if (imgPath.size() != 0)
+							{
+								previewer.SetDiffuseTextureForElement(i, j, imgPath);
+								preview = true;
+								sceneModified = true;
+							}
+						}
+
+						ImGui::SetCursorPosX(posX);
+						ImGui::SetCursorPosY(posY + 27);
+						if (texId == -1)
+							ImGui::BeginDisabled();
+						idSubStr = "Remove##diffuseTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							previewer.SetDiffuseTextureForElement(i, j, "");
+							preview = true;
+							sceneModified = true;
+						}
+						if (texId == -1)
+							ImGui::EndDisabled();
+						ImGui::PopFont();
+						ImGui::PopStyleVar();
+
+						posY = ImGui::GetCursorPosY();
+						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
+						ImGui::Text("Normal Texture");
+
+						texId = objs[i].elements[j].normalTexId;
+						ImGui::SameLine(160);
+						ImGui::SetCursorPosY(posY);
+						ImGui::Image((void*)texId, ImVec2(50, 50));
+
+						ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+						ImGui::PushFont(normalIconFont);
+						ImGui::SameLine();
+						posX = ImGui::GetCursorPosX();
 						ImGui::SetCursorPosY(posY);
 						idSubStr = "Load##normalmap" + idStr;
 						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
@@ -1852,6 +1967,174 @@ void GuiRightBar()
 						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
 						{
 							previewer.SetNormalTextureForElement(i, j, "");
+							preview = true;
+							sceneModified = true;
+						}
+						if (texId == -1)
+							ImGui::EndDisabled();
+						ImGui::PopFont();
+						ImGui::PopStyleVar();
+
+						posY = ImGui::GetCursorPosY();
+						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
+						ImGui::Text("Emissive Texture");
+
+						texId = objs[i].elements[j].emissTexId;
+						ImGui::SameLine(160);
+						ImGui::SetCursorPosY(posY);
+						ImGui::Image((void*)texId, ImVec2(50, 50));
+
+						ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+						ImGui::PushFont(normalIconFont);
+						ImGui::SameLine();
+						posX = ImGui::GetCursorPosX();
+						ImGui::SetCursorPosY(posY);
+						idSubStr = "Load##emissTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							std::string imgPath = LoadImage();
+							if (imgPath.size() != 0)
+							{
+								previewer.SetEmissTextureForElement(i, j, imgPath);
+								preview = true;
+								sceneModified = true;
+							}
+						}
+
+						ImGui::SetCursorPosX(posX);
+						ImGui::SetCursorPosY(posY + 27);
+						if (texId == -1)
+							ImGui::BeginDisabled();
+						idSubStr = "Remove##emissTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							previewer.SetEmissTextureForElement(i, j, "");
+							preview = true;
+							sceneModified = true;
+						}
+						if (texId == -1)
+							ImGui::EndDisabled();
+						ImGui::PopFont();
+						ImGui::PopStyleVar();
+
+						posY = ImGui::GetCursorPosY();
+						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
+						ImGui::Text("Roughness Texture");
+
+						texId = objs[i].elements[j].roughnessTexId;
+						ImGui::SameLine(160);
+						ImGui::SetCursorPosY(posY);
+						ImGui::Image((void*)texId, ImVec2(50, 50));
+
+						ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+						ImGui::PushFont(normalIconFont);
+						ImGui::SameLine();
+						posX = ImGui::GetCursorPosX();
+						ImGui::SetCursorPosY(posY);
+						idSubStr = "Load##roughnessTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							std::string imgPath = LoadImage();
+							if (imgPath.size() != 0)
+							{
+								previewer.SetRoughnessTextureForElement(i, j, imgPath);
+								preview = true;
+								sceneModified = true;
+							}
+						}
+
+						ImGui::SetCursorPosX(posX);
+						ImGui::SetCursorPosY(posY + 27);
+						if (texId == -1)
+							ImGui::BeginDisabled();
+						idSubStr = "Remove##roughnessTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							previewer.SetRoughnessTextureForElement(i, j, "");
+							preview = true;
+							sceneModified = true;
+						}
+						if (texId == -1)
+							ImGui::EndDisabled();
+						ImGui::PopFont();
+						ImGui::PopStyleVar();
+
+						posY = ImGui::GetCursorPosY();
+						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
+						ImGui::Text("Metallic Texture");
+
+						texId = objs[i].elements[j].metallicTexId;
+						ImGui::SameLine(160);
+						ImGui::SetCursorPosY(posY);
+						ImGui::Image((void*)texId, ImVec2(50, 50));
+
+						ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+						ImGui::PushFont(normalIconFont);
+						ImGui::SameLine();
+						posX = ImGui::GetCursorPosX();
+						ImGui::SetCursorPosY(posY);
+						idSubStr = "Load##metallicTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							std::string imgPath = LoadImage();
+							if (imgPath.size() != 0)
+							{
+								previewer.SetMetallicTextureForElement(i, j, imgPath);
+								preview = true;
+								sceneModified = true;
+							}
+						}
+
+						ImGui::SetCursorPosX(posX);
+						ImGui::SetCursorPosY(posY + 27);
+						if (texId == -1)
+							ImGui::BeginDisabled();
+						idSubStr = "Remove##metallicTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							previewer.SetMetallicTextureForElement(i, j, "");
+							preview = true;
+							sceneModified = true;
+						}
+						if (texId == -1)
+							ImGui::EndDisabled();
+						ImGui::PopFont();
+						ImGui::PopStyleVar();
+
+						posY = ImGui::GetCursorPosY();
+						ImGui::SetCursorPosY(posY + (50 - ImGui::GetTextLineHeight()) * 0.5f);
+						ImGui::Text("Opacity Texture");
+
+						texId = objs[i].elements[j].opacityTexId;
+						ImGui::SameLine(160);
+						ImGui::SetCursorPosY(posY);
+						ImGui::Image((void*)texId, ImVec2(50, 50));
+
+						ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+						ImGui::PushFont(normalIconFont);
+						ImGui::SameLine();
+						posX = ImGui::GetCursorPosX();
+						ImGui::SetCursorPosY(posY);
+						idSubStr = "Load##opacityTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							std::string imgPath = LoadImage();
+							if (imgPath.size() != 0)
+							{
+								previewer.SetOpacityTextureForElement(i, j, imgPath);
+								preview = true;
+								sceneModified = true;
+							}
+						}
+
+						ImGui::SetCursorPosX(posX);
+						ImGui::SetCursorPosY(posY + 27);
+						if (texId == -1)
+							ImGui::BeginDisabled();
+						idSubStr = "Remove##opacityTex" + idStr;
+						if (ImGui::Button(idSubStr.c_str(), ImVec2(65, 23)))
+						{
+							previewer.SetOpacityTextureForElement(i, j, "");
 							preview = true;
 							sceneModified = true;
 						}
@@ -2516,15 +2799,12 @@ void Display()
 		glm::mat4 V = glm::lookAt(eyePos, eyePos + previewer.PreviewCameraDirection(), previewer.PreviewCameraUp());
 		glm::mat4 P = glm::perspective(previewer.CameraFovy(), (float)wRender / (float)hRender, previewer.CameraFocal(), 100.0f);
 		glm::mat4 PV = P * V;
-		int PV_loc = glGetUniformLocation(previewShader, "PV");
-		glUniformMatrix4fv(PV_loc, 1, false, glm::value_ptr(PV));
-		int eyePos_loc = glGetUniformLocation(previewShader, "eyePos");
-		glUniform3fv(eyePos_loc, 1, glm::value_ptr(eyePos));
+		glUniformMatrix4fv(0, 1, false, glm::value_ptr(PV));
+		glUniform3fv(2, 1, glm::value_ptr(eyePos));
 
-		int pass_loc = glGetUniformLocation(previewShader, "pass");
 		for (int pass = 0; pass < 2; pass++)
 		{
-			glUniform1i(pass_loc, pass);
+			glUniform1i(7, pass);
 			glDrawBuffer(GL_COLOR_ATTACHMENT0 + pass);
 			if (pass == 0)
 				glClearColor(previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f);
@@ -2535,35 +2815,69 @@ void Display()
 			auto& objs = previewer.GetLoadedObjects();
 			for (int i = 0; i < objs.size(); i++)
 			{
-				int objId_loc = glGetUniformLocation(previewShader, "objectId");
-				glUniform1i(objId_loc, i + 1);
+				glUniform1i(8, i + 1);
 
-				int M_loc = glGetUniformLocation(previewShader, "M");
-				glUniformMatrix4fv(M_loc, 1, false, glm::value_ptr(objs[i].Mpreview));
+				glUniformMatrix4fv(1, 1, false, glm::value_ptr(objs[i].Mpreview));
 
 				for (int j = 0; j < objs[i].elements.size(); j++)
 				{
-					int elementId_loc = glGetUniformLocation(previewShader, "elementId");
-					glUniform1i(elementId_loc, j + 1);
+					glUniform1i(9, j + 1);
 
 					glm::vec3 color = objs[i].elements[j].material.diffuse;
 					if (objs[i].elements[j].highlight)
 						color = previewHighlightColor;
 					else if (objs[i].isSelected)
 						color = previewSelectionColor;
-					int color_loc = glGetUniformLocation(previewShader, "color");
-					glUniform3fv(color_loc, 1, glm::value_ptr(color));
 
-					glDisable(GL_TEXTURE_2D);
-					int normalMap_loc = glGetUniformLocation(previewShader, "normalMap");
-					glUniform1i(normalMap_loc, 0);
+					glUniform1i(10, objs[i].elements[j].highlight || objs[i].isSelected);
+
+					glBindBufferBase(GL_UNIFORM_BUFFER, 0, previewMaterialUBO);
+					GLubyte* blockData = (GLubyte*)glMapBufferRange
+					(
+						GL_UNIFORM_BUFFER, 0, 56,
+						GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT
+					);
+					glm::vec4 v4 = glm::vec4(color, 1.0f);
+					memcpy(blockData + 0, glm::value_ptr(v4), sizeof(float) * 4);
+					v4 = glm::vec4(objs[i].elements[j].material.specular, 1.0f);
+					memcpy(blockData + 16, glm::value_ptr(v4), sizeof(float) * 4);
+					float v = objs[i].elements[j].material.roughness;
+					memcpy(blockData + 32, &v, sizeof(float));
+					v = objs[i].elements[j].material.reflectiveness;
+					memcpy(blockData + 36, &v, sizeof(float));
+					int iv = objs[i].elements[j].diffuseTexId != -1;
+					memcpy(blockData + 40, &iv, sizeof(int));
+					iv = objs[i].elements[j].normalTexId != -1;
+					memcpy(blockData + 44, &iv, sizeof(int));
+					iv = objs[i].elements[j].roughnessTexId != -1;
+					memcpy(blockData + 48, &iv, sizeof(int));
+					iv = objs[i].elements[j].metallicTexId != -1;
+					memcpy(blockData + 52, &iv, sizeof(int));
+					glUnmapBuffer(GL_UNIFORM_BUFFER);
+
+					if (objs[i].elements[j].diffuseTexId != -1)
+					{
+						glActiveTexture(GL_TEXTURE0 + 0);
+						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].diffuseTexId);
+						glUniform1i(3, 0);
+					}
 					if (objs[i].elements[j].normalTexId != -1)
 					{
-						glActiveTexture(GL_TEXTURE0);
+						glActiveTexture(GL_TEXTURE0 + 1);
 						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].normalTexId);
-						int normalTex_loc = glGetUniformLocation(previewShader, "normalTex");
-						glUniform1i(normalTex_loc, 0);
-						glUniform1i(normalMap_loc, 1);
+						glUniform1i(4, 1);
+					}
+					if (objs[i].elements[j].roughnessTexId != -1)
+					{
+						glActiveTexture(GL_TEXTURE0 + 2);
+						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].roughnessTexId);
+						glUniform1i(5, 2);
+					}
+					if (objs[i].elements[j].metallicTexId != -1)
+					{
+						glActiveTexture(GL_TEXTURE0 + 3);
+						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].metallicTexId);
+						glUniform1i(6, 3);
 					}
 
 					glBindVertexArray(objs[i].elements[j].vao);
@@ -2580,8 +2894,7 @@ void Display()
 		glUseProgram(quadShader);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, frameTex);
-		int fbo_tex_loc = glGetUniformLocation(quadShader, "tex");
-		glUniform1i(fbo_tex_loc, 0);
+		glUniform1i(0, 0);
 		glBindVertexArray(quadVao);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); // draw quad
 	}
@@ -3095,6 +3408,14 @@ void InitializeGLFrame()
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
+
+	glUseProgram(previewShader);
+	if (previewMaterialUBO != -1)
+		glDeleteBuffers(1, &previewMaterialUBO);
+	glGenBuffers(1, &previewMaterialUBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, previewMaterialUBO);
+	glBufferData(GL_UNIFORM_BUFFER, 56, NULL, GL_DYNAMIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
 void InitializeImGui()
@@ -3237,6 +3558,8 @@ void OnExit()
 		glDeleteRenderbuffers(1, &rbo);
 	if (fbo != -1)
 		glDeleteFramebuffers(1, &fbo);
+	if (previewMaterialUBO != -1)
+		glDeleteBuffers(1, &previewMaterialUBO);
 	if (frameTex != -1)
 		glDeleteTextures(1, &frameTex);
 	if (fboTex != -1)
@@ -3245,6 +3568,11 @@ void OnExit()
 		glDeleteTextures(1, &pickTex);
 	if (appIconTex != -1)
 		glDeleteTextures(1, &appIconTex);
+
+	if (quadShader != -1)
+		glDeleteProgram(quadShader);
+	if (previewShader != -1)
+		glDeleteProgram(previewShader);
 }
 /* ----- PROGRAM FUNCTIONS ------ */
 

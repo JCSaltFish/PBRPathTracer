@@ -96,15 +96,17 @@ BVHNode::BVHNode()
 {
 	mLeft = 0;
 	mRight = 0;
+	mTriangle = 0;
 
 	mRandAxis = std::uniform_int_distribution<int>(0, 2);
 }
 
-BVHNode::BVHNode(const Triangle& t) : mTriangle(t)
+BVHNode::BVHNode(Triangle* t) : mTriangle(t)
 {
-	mBox.Build(t.v1);
-	mBox.Build(t.v2);
-	mBox.Build(t.v3);
+	mBox.Build(t->v1);
+	mBox.Build(t->v2);
+	mBox.Build(t->v3);
+	mBox.Check();
 
 	mLeft = 0;
 	mRight = 0;
@@ -174,43 +176,41 @@ bool BVHNode::TriZCompare(const Triangle& a, const Triangle& b)
 		return false;
 }
 
-BVHNode* BVHNode::Construct(std::vector<Triangle>& triangles)
+BVHNode* BVHNode::Construct(std::vector<Triangle>& triangles, int size, int offset)
 {
 	std::random_device rd;
 	int axis = mRandAxis(std::mt19937(rd()));
 	if (axis == 0)
-		std::sort(triangles.begin(), triangles.end(), TriXCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriXCompare);
 	else if (axis == 1)
-		std::sort(triangles.begin(), triangles.end(), TriYCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriYCompare);
 	else
-		std::sort(triangles.begin(), triangles.end(), TriZCompare);
+		std::sort(triangles.begin() + offset, triangles.begin() + offset + size, TriZCompare);
 
-	if (triangles.size() == 0)
+	if (size == 0)
 		return this;
-	else if (triangles.size() == 1)
+	else if (size == 1)
 	{
-		mLeft = new BVHNode(triangles[0]);
-		mRight = new BVHNode(triangles[0]);
+		mLeft = new BVHNode(&triangles[offset]);
+		mRight = new BVHNode(&triangles[offset]);
 	}
-	else if (triangles.size() == 2)
+	else if (size == 2)
 	{
-		mLeft = new BVHNode(triangles[0]);
-		mRight = new BVHNode(triangles[1]);
+		mLeft = new BVHNode(&triangles[offset]);
+		mRight = new BVHNode(&triangles[offset + 1]);
 	}
 	else
 	{
-		std::vector<Triangle> left, right;
-		int i = 0;
-		for (; i < triangles.size() / 2; i++)
-			left.push_back(triangles[i]);
-		for (; i < triangles.size(); i++)
-			right.push_back(triangles[i]);
+		int leftOffset = offset;
+		int leftSize = size / 2;
+		int rightOffset = offset + leftSize;
+		int rightSize = size - leftSize;
 		BVHNode* nodeLeft = new BVHNode();
 		BVHNode* nodeRight = new BVHNode();
-		mLeft = nodeLeft->Construct(left);
-		mRight = nodeRight->Construct(right);
+		mLeft = nodeLeft->Construct(triangles, leftSize, leftOffset);
+		mRight = nodeRight->Construct(triangles, rightSize, rightOffset);
 	}
-	
+
 	mBox.Build(mLeft->mBox.min);
 	mBox.Build(mLeft->mBox.max);
 	mBox.Build(mRight->mBox.min);
@@ -218,82 +218,4 @@ BVHNode* BVHNode::Construct(std::vector<Triangle>& triangles)
 	mBox.Check();
 
 	return this;
-}
-
-// based from:
-// https://blackpawn.com/texts/pointinpoly/?fbclid=IwAR2utQtHuFUrHXRszp5sP8CP3jJuMNsOVrpwqAWWSBIx6DLENK5T9lkMceA
-const bool BVHNode::IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b)
-{
-	glm::vec3 ba = b - a;
-	glm::vec3 cp1 = glm::cross(ba, (p1 - a));
-	glm::vec3 cp2 = glm::cross(ba, (p2 - a));
-
-	return (glm::dot(cp1, cp2) >= 0);
-}
-
-const bool BVHNode::IsInside(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
-{
-	return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
-}
-
-const bool BVHNode::Hit(const glm::vec3& ro, const glm::vec3& rd, Triangle& triangleOut, float& distOut)
-{
-	if (mLeft && mRight)
-	{
-		if (mBox.Intersect(ro, rd))
-		{
-			Triangle tLeft, tRight;
-			float dLeft, dRight;
-			bool hitLeft = mLeft->Hit(ro, rd, tLeft, dLeft);
-			bool hitRight = mRight->Hit(ro, rd, tRight, dRight);
-			if (hitLeft && hitRight)
-			{
-				if (dLeft < dRight)
-				{
-					triangleOut = tLeft;
-					distOut = dLeft;
-				}
-				else
-				{
-					triangleOut = tRight;
-					distOut = dRight;
-				}
-				return true;
-			}
-			else if (hitLeft)
-			{
-				triangleOut = tLeft;
-				distOut = dLeft;
-				return true;
-			}
-			else if (hitRight)
-			{
-				triangleOut = tRight;
-				distOut = dRight;
-				return true;
-			}
-			else
-				return false;
-		}
-		else
-			return false;
-	}
-	else
-	{
-		if (glm::dot(rd, mTriangle.normal) == 0.0f)
-			return false;
-		distOut = glm::dot((mTriangle.v1 - ro), mTriangle.normal) / glm::dot(rd, mTriangle.normal);
-		if (distOut < 0)
-			return false;
-		// update intersection point
-		glm::vec3 p = ro + rd * distOut;
-
-        if (IsInside(p, mTriangle.v1, mTriangle.v2, mTriangle.v3)) {
-            triangleOut = mTriangle;
-            return true;
-        }
-        return false;
-	}
-
-	return false;
 }

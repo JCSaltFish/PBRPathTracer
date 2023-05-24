@@ -10,39 +10,6 @@
 
 #include "mesh.h"
 
-enum class MaterialType
-{
-	OPAQUE,
-	TRANSLUCENT
-};
-
-struct Material
-{
-	MaterialType type;
-	glm::vec3 diffuse;
-	glm::vec3 specular;
-	glm::vec3 emissive;
-	float emissiveIntensity;
-	float roughness;
-	float reflectiveness;
-	float ior;
-
-	int normalTexId;
-
-	Material() :
-		type(MaterialType::OPAQUE),
-		emissiveIntensity(1.0f),
-		roughness(1.0f),
-		reflectiveness(0.0f),
-		ior(1.5f),
-		normalTexId(-1)
-	{
-		diffuse = glm::vec3(1.0f);
-		specular = glm::vec3(1.0f);
-		emissive = glm::vec3(0.0f);
-	}
-};
-
 namespace PathTracerLoader
 {
 	struct Element
@@ -83,6 +50,7 @@ class PathTracer
 private:
 	std::vector<Triangle> mTriangles;
 	BVHNode* mBvh;
+	std::vector<Triangle*> mLights;
 
 	std::vector<PathTracerLoader::Object> mLoadedObjects;
 	std::vector<Image*> mLoadedTextures;
@@ -97,6 +65,8 @@ private:
 	glm::vec3 mCamUp;
 	float mCamFocal;
 	float mCamFovy;
+	float mCamFocalDist;
+	float mCamAperture;
 
 	int mSamples;
 	bool mNeedReset;
@@ -110,14 +80,28 @@ public:
 
 private:
 	const float Rand();
-	const glm::vec2 GetUV(const glm::vec3& p, const Triangle& t) const;
-	const glm::vec3 GetSmoothNormal(const glm::vec3& p, const Triangle& t) const;
-	const glm::vec3 Trace(const glm::vec3& ro, const glm::vec3& rd, int depth = 0, bool inside = false);
+	const bool IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b) const;
+	const bool IntersectTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) const;
+	const bool Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& rd, Triangle*& triangleOut, float& distOut);
+	const glm::vec3 SampleTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2);
+	const glm::vec3 DirectIllumimation(const glm::vec3& rd, const glm::vec3& p, const glm::vec3& n, const glm::vec3& diffuse);
+	const glm::vec2 GetUV(const glm::vec3& p, Triangle* t) const;
+	const glm::vec3 GetSmoothNormal(const glm::vec3& p, Triangle* t) const;
+	const glm::vec2 SampleCircle();
+	const glm::vec3 Trace(const glm::vec3& ro, const glm::vec3& rd, int depth = 0, int iter = 0, bool inside = false);
 
 public:
 	void LoadObject(const std::string& file, const glm::mat4& model);
+	
+	void SetDiffuseTextureForElement(int objId, int elementId, const std::string& file);
 	void SetNormalTextureForElement(int objId, int elementId, const std::string& file);
+	void SetEmissTextureForElement(int objId, int elementId, const std::string& file);
+	void SetRoughnessTextureForElement(int objId, int elementId, const std::string& file);
+	void SetMetallicTextureForElement(int objId, int elementId, const std::string& file);
+	void SetOpacityTextureForElement(int objId, int elementId, const std::string& file);
+
 	void SetMaterial(int objId, int elementId, Material& material);
+
 	void BuildBVH();
 	void ResetImage();
 	void ClearScene();
@@ -133,6 +117,8 @@ public:
 
 	void SetCamera(const glm::vec3& pos, const glm::vec3& dir, const glm::vec3& up);
 	void SetProjection(float f, float fovy);
+	void SetCameraFocalDist(float dist);
+	void SetCameraAperture(float aperture);
 	void RenderFrame();
 	void Exit();
 };
