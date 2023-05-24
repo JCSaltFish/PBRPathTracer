@@ -65,7 +65,6 @@ GLuint rbo = -1;
 GLuint frameTex = -1;
 GLuint fboTex = -1;
 GLuint pickTex = -1;
-GLubyte* texData = 0;
 
 ImFont* bigIconFont = 0;
 ImFont* normalIconFont = 0;
@@ -185,6 +184,8 @@ void ClearScene()
 
 	previewer.SetCamera(glm::vec3(0.0f, 0.0f, -10.0f),
 		previewer.CameraDirection(), previewer.CameraUp());
+	previewer.SetCameraFocalDist(5.0f);
+	previewer.SetCameraF(32.0f);
 	previewer.RotateCamera(glm::vec3(0.0f));
 }
 
@@ -748,9 +749,16 @@ void ExportAt(const std::string& path)
     statusText = "Exporting file at: " + path + "...";
 	statusShowBegin = std::chrono::steady_clock::now();
 
+	GLubyte* texData = new GLubyte[wRender * hRender * 4];
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, frameTex);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, texData);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
     stbi_flip_vertically_on_write(true);
-    GLuint channel = 3; // rgb
-    stbi_write_png(path.c_str(), wRender, hRender, channel, texData, channel * wRender);
+    stbi_write_png(path.c_str(), wRender, hRender, 4, texData, 4 * wRender);
+
+	delete[] texData;
 
 	statusText = "Exported file at: " + path;
 	statusShowBegin = std::chrono::steady_clock::now();
@@ -2967,15 +2975,6 @@ void Idle()
 	}
 
 	Display();
-
-	// Only refresh result image on rendering
-	/*if (((init || stop || isPausing) && !render) || preview)
-		return;
-
-	glBindTexture(GL_TEXTURE_2D, frameTex);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, wRender, hRender, GL_RGB, GL_UNSIGNED_BYTE, texData);
-	glBindTexture(GL_TEXTURE_2D, 0);*/
 }
 
 void Reshape(GLFWwindow* window, int w, int h)
@@ -3389,11 +3388,6 @@ void InitializeFrame()
 	if (frameTex == -1)
 		glGenTextures(1, &frameTex);
 	glBindTexture(GL_TEXTURE_2D, frameTex);
-	if (texData)
-		delete[] texData;
-	texData = new GLubyte[wRender * hRender * 3];
-	for (int i = 0; i < wRender * hRender * 3; i++)
-		texData[i] = 0;
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, wRender, hRender, 0, GL_RGBA, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
@@ -3594,9 +3588,6 @@ void PathTracerLoop()
 
 void OnExit()
 {
-	if (texData)
-		delete[] texData;
-
 	if (quadVao != -1)
 		glDeleteVertexArrays(1, &quadVao);
 	if (rbo != -1)

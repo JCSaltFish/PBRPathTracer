@@ -13,7 +13,7 @@ Previewer::Previewer()
     mCamFocal = 0.05f;
     mCamFovy = 70;
     mCamFocalDist = 5.0f;
-    mCamF = 32;
+    mCamF = 32.0f;
 }
 
 Previewer::~Previewer()
