@@ -1,25 +1,5 @@
-## CPU MONTE CARLO PATH TRACER
+This branch has stopped updating since it is an experimental branch.
 
-Jed Wang jcsaltfish@gmail.com Angel Lam angellam278@gmail.com
+Currently it has no direct illumination & pbr materials & dof ect. support.
 
-- Load and render obj models
-- Diffuse, specular, glossy and glass material BRDFs support
-- OpenMP acceleration
-- BVH acceleration
-
-OBJ LOADER by Robert Smith: 
-https://github.com/Bly7/OBJ-Loader
-
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt00.png)
-
-Check out our render and processing [results](https://github.com/JCSaltFish/PathTracing/blob/master/Results.pdf)
-
-##
-
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt01.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt02.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt03.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt04.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt05.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt06.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt07.png)
+Please check out the [CPU Master branch](https://github.com/JCSaltFish/PBRPathTracer) and **recomended [GPU Compute Shader branch](https://github.com/JCSaltFish/PBRPathTracer/tree/compute)**.
