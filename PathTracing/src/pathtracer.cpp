@@ -483,6 +483,8 @@ const glm::vec3 PathTracer::DirectIllumimation(const glm::vec3& rd, const glm::v
 	glm::vec3 vLight = SampleTriangle(tLight->v1, tLight->v2, tLight->v3);
 	// evaluate the shadow ray
 	glm::vec3 l = glm::normalize(vLight - p);
+	if (glm::dot(-n, -l) <= 0.f)
+		return glm::vec3(0.f);
 	float d = 0.0;
 	Triangle* t = 0;
 	if (Hit(mBvh, p, l, t, d))
@@ -493,7 +495,7 @@ const glm::vec3 PathTracer::DirectIllumimation(const glm::vec3& rd, const glm::v
 
 	glm::vec3 lColor = tLight->mat->emissive * tLight->mat->emissiveIntensity;
 
-	return lColor * diffuse * glm::max(0.f, glm::dot(-n, -l));
+	return lColor * diffuse * glm::dot(-n, -l);
 }
 
 const glm::vec2 PathTracer::GetUV(const glm::vec3& p, Triangle* t) const
