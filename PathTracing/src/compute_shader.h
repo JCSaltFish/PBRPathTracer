@@ -272,6 +272,8 @@ const std::string compPt =
 "	vec3 vLight = SampleTriangle(tLight.v1.xyz, tLight.v2.xyz, tLight.v3.xyz);\n"
 "	// evaluate the shadow ray\n"
 "	vec3 l = normalize(vLight - p);\n"
+"	if (dot(-n, -l) <= 0.)\n"
+"	return vec3(0.);\n"
 "	float d = 0.0;\n"
 "    int nodeIndex = -1;\n"
 "	if (Hit(p, l, nodeIndex, d))\n"
@@ -283,7 +285,7 @@ const std::string compPt =
 "	Material mLight = materials[tLight.materialId];\n"
 "	vec3 lColor = mLight.emissive.rgb * mLight.emissIntensity;\n"
 
-"	return lColor * diffuse * max(0., dot(-n, -l));\n"
+"	return lColor * diffuse * dot(-n, -l);\n"
 "}\n"
 
 "vec4 Trace(vec3 ro, vec3 rd)\n"

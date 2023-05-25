@@ -265,6 +265,8 @@ vec3 DirectIllumimation(vec3 rd, vec3 p, vec3 n, vec3 diffuse)
 	vec3 vLight = SampleTriangle(tLight.v1.xyz, tLight.v2.xyz, tLight.v3.xyz);
 	// evaluate the shadow ray
 	vec3 l = normalize(vLight - p);
+	if (dot(-n, -l) <= 0.)
+		return vec3(0.);
 	float d = 0.0;
     int nodeIndex = -1;
 	if (Hit(p, l, nodeIndex, d))
@@ -276,7 +278,7 @@ vec3 DirectIllumimation(vec3 rd, vec3 p, vec3 n, vec3 diffuse)
 	Material mLight = materials[tLight.materialId];
 	vec3 lColor = mLight.emissive.rgb * mLight.emissIntensity;
 
-	return lColor * diffuse * max(0., dot(-n, -l));
+	return lColor * diffuse * dot(-n, -l);
 }
 
 vec4 Trace(vec3 ro, vec3 rd)
