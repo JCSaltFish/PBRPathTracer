@@ -1,25 +1,44 @@
-## CPU MONTE CARLO PATH TRACER
+# PBR PathTracer
 
-Jed Wang jcsaltfish@gmail.com Angel Lam angellam278@gmail.com
+_This is the CPU based version, check out the [GPU compute shader branch](https://github.com/JCSaltFish/PBRPathTracer/tree/compute)!_
 
-- Load and render obj models
-- Diffuse, specular, glossy and glass material BRDFs support
-- OpenMP acceleration
-- BVH acceleration
+![Thumb](https://github.com/JCSaltFish/PathTracing/blob/master/doc/thumb.png)
+* #### User Interface ([GLFW](https://github.com/glfw/glfw), [Dear ImGui](https://github.com/ocornut/imgui))
+  * Independent UI Thread (OpenMP)
 
-OBJ LOADER by Robert Smith: 
-https://github.com/Bly7/OBJ-Loader
+  ![GUI](https://github.com/JCSaltFish/PathTracing/blob/master/doc/gui.png)
 
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt00.png)
+* #### Obj Loading ([tinyobjloeader](https://github.com/tinyobjloader/tinyobjloader))
+  * Drag and Drop Batch Importing
+  * Sub Elements
 
-Check out our render and processing [results](https://github.com/JCSaltFish/PathTracing/blob/master/Results.pdf)
+  ![Obj](https://github.com/JCSaltFish/PathTracing/blob/master/doc/obj.png)
+
+* #### Scene Editing
+  * Real-time Previewer
+  * Mouse Navigation
+  * Scene Files (*.pts) Save and Load
+
+  ![Scene](https://github.com/JCSaltFish/PathTracing/blob/master/doc/scene.png)
+
+* #### PBR Materials
+  * Opaque and Translucent
+  * PBR Textures
+
+  ![PBR](https://github.com/JCSaltFish/PathTracing/blob/master/doc/pbr.png)
+
+* #### Camera Parameters
+  * Aperture and Focal Distance
+
+  ![DOF](https://github.com/JCSaltFish/PathTracing/blob/master/doc/dof.png)
+
+* #### BVH Acceleration
+* #### Multi-threaded Rendering (OpenMP)
 
 ##
-
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt01.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt02.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt03.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt04.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt05.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt06.png)
-![image](https://github.com/JCSaltFish/PathTracing/blob/master/images/pt07.png)
+### Other libraries used:
+* tiny file dialogs: https://sourceforge.net/projects/tinyfiledialogs/
+* stb: https://github.com/nothings/stb
+##
+### Legacy Documentations
+Check out our render and processing [results](https://github.com/JCSaltFish/PathTracing/blob/master/doc/Results.pdf).
