@@ -35,8 +35,11 @@
 
 ##
 ### Other libraries used:
+* OpenGL Mathematics: https://github.com/g-truc/glm
 * tiny file dialogs: https://sourceforge.net/projects/tinyfiledialogs/
 * stb: https://github.com/nothings/stb
+* Source Sans: https://github.com/adobe-fonts/source-sans
+* Fork Awesome: https://github.com/ForkAwesome/Fork-Awesome
 ##
 ### Legacy Documentations
 Check out our render and processing [results](https://github.com/JCSaltFish/PathTracing/blob/master/doc/Results.pdf).
