@@ -53,8 +53,9 @@ const std::string vPrev =
 {
 	"#version 430\n"
 	
-	"layout(location = 0) uniform mat4 PV;\n"
-	"layout(location = 1) uniform mat4 M;\n"
+	"layout(location = 0) uniform mat4 P;\n"
+	"layout(location = 1) uniform mat4 V;\n"
+	"layout(location = 2) uniform mat4 M;\n"
 
 	"in vec3 iPos;\n"
 	"in vec3 iNormal;\n"
@@ -73,7 +74,7 @@ const std::string vPrev =
 	"	tangentW = normalize(M * vec4(iTangent, 0.0)).xyz;\n"
 	"	texCoord = iTexCoord;\n"
 
-	"	gl_Position = PV * M * vec4(iPos, 1.0);\n"
+	"	gl_Position = P * V * M * vec4(iPos, 1.0);\n"
 	"}\n"
 };
 
@@ -81,7 +82,8 @@ const std::string fPrev =
 {
 	"#version 430\n"
 
-	"layout(location = 2) uniform vec3 eyePos;\n"
+	"layout(location = 0) uniform mat4 P;\n"
+	"layout(location = 3) uniform vec3 eyePos;\n"
 
 	"layout(binding = 0) uniform MaterialUniforms\n"
 	"{\n"
@@ -90,71 +92,87 @@ const std::string fPrev =
 
 	"	float roughness;\n"
 	"	float reflectiveness;\n"
+	"	int translucent;\n"
+	"	float translucency;\n"
 
 	"	int diffuseMap;\n"
 	"	int normalMap;\n"
 	"	int roughnessMap;\n"
 	"	int metallicMap;\n"
+	"	int opacityMap;\n"
 	"} Material;\n"
 
-	"layout(location = 3) uniform sampler2D diffuseTex;\n"
-	"layout(location = 4) uniform sampler2D normalTex;\n"
-	"layout(location = 5) uniform sampler2D roughnessTex;\n"
-	"layout(location = 6) uniform sampler2D metallicTex;\n"
+	"layout(location = 4) uniform sampler2D diffuseTex;\n"
+	"layout(location = 5) uniform sampler2D normalTex;\n"
+	"layout(location = 6) uniform sampler2D roughnessTex;\n"
+	"layout(location = 7) uniform sampler2D metallicTex;\n"
+	"layout(location = 8) uniform sampler2D opacityTex;\n"
 
-	"layout(location = 7) uniform int pass = 0;\n"
-	"layout(location = 8) uniform int objectId = 0;\n"
-	"layout(location = 9) uniform int elementId = 0;\n"
-	"layout(location = 10) uniform int highlight = 0;\n"
+	"layout(location = 9) uniform int objectId = 0;\n"
+	"layout(location = 10) uniform int elementId = 0;\n"
+	"layout(location = 11) uniform int highlight = 0;\n"
 
 	"in vec3 posW;\n"
 	"in vec3 normalW;\n"
 	"in vec3 tangentW;\n"
 	"in vec2 texCoord;\n"
 
-	"out vec4 fragcolor;\n"
+	"layout(location = 0) out vec4 fragcolor;\n"
+	"layout(location = 1) out vec4 pickcolor;\n"
 
 	"void main()\n"
 	"{\n"
-	"	if (pass == 0)\n"
+	"	vec3 l = normalize(eyePos - posW);\n"
+	"	vec3 n = normalW;\n"
+	"	if (dot(n, l) < 0.0)\n"
+	"		n = -n;\n"
+	"	if (Material.normalMap == 1)\n"
 	"	{\n"
-	"		vec3 l = normalize(eyePos - posW);\n"
-	"		vec3 n = normalW;\n"
-	"		if (dot(n, l) < 0.0)\n"
-	"			n = -n;\n"
-	"		if (Material.normalMap == 1)\n"
-	"		{\n"
-	"			vec3 bitangentW = normalize(cross(normalW, tangentW));\n"
-	"			mat3 TBN = mat3(tangentW, bitangentW, normalW);\n"
-	"			vec3 nt = normalize(texture2D(normalTex, texCoord).rgb * 2.0 - 1.0);\n"
-	"			n = TBN * nt;\n"
-	"		}\n"
-
-	"		float roughness = Material.roughness;\n"
-	"		if (Material.roughnessMap == 1)\n"
-	"			roughness = texture2D(roughnessTex, texCoord).r;\n"
-	"		float reflectiveness = Material.reflectiveness;\n"
-	"		if (Material.metallicMap == 1)\n"
-	"			reflectiveness = texture2D(metallicTex, texCoord).r;\n"
-
-	"		vec3 diffuse = Material.color.rgb;\n"
-	"		if (Material.diffuseMap == 1 && highlight != 1)\n"
-	"			diffuse = texture2D(diffuseTex, texCoord).rgb;\n"
-	"		diffuse *= max(dot(n, l), 0.0);\n"
-
-	"		vec3 specular = Material.specular.rgb;\n"
-	"		specular *= pow(max(dot(n, l), 0.), 128. * (1. - Material.roughness));\n"
-	"		specular *= max(dot(n, l), 0.0);\n"
-
-	"		vec3 shade = diffuse * (1. - Material.reflectiveness) + specular * Material.reflectiveness;\n"
-	"		if (highlight == 1)\n"
-	"			shade = diffuse;\n"
-
-	"		fragcolor = vec4(shade, 1.);\n"
+	"		vec3 bitangentW = normalize(cross(normalW, tangentW));\n"
+	"		mat3 TBN = mat3(tangentW, bitangentW, normalW);\n"
+	"		vec3 nt = normalize(texture2D(normalTex, texCoord).rgb * 2.0 - 1.0);\n"
+	"		n = TBN * nt;\n"
 	"	}\n"
 
-	"	else if (pass == 1)\n"
-	"		fragcolor = vec4(objectId, elementId, 0.0, 1.0);\n"
+	"	float roughness = Material.roughness;\n"
+	"	if (Material.roughnessMap == 1)\n"
+	"		roughness = texture2D(roughnessTex, texCoord).r;\n"
+	"	float reflectiveness = Material.reflectiveness;\n"
+	"	if (Material.metallicMap == 1)\n"
+	"		reflectiveness = texture2D(metallicTex, texCoord).r;\n"
+
+	"	vec3 diffuse = Material.color.rgb;\n"
+	"	if (Material.diffuseMap == 1 && highlight != 1)\n"
+	"		diffuse = texture2D(diffuseTex, texCoord).rgb;\n"
+	"	diffuse *= max(dot(n, l), 0.0);\n"
+
+	"	vec3 specular = Material.specular.rgb;\n"
+	"	float specularFact = pow(max(dot(n, l), 0.), 128. * (1. - Material.roughness));\n"
+	"	specularFact *= max(dot(n, l), 0.0);\n"
+	"	specular *= specularFact;\n"
+
+	"	vec3 shade = diffuse * (1. - Material.reflectiveness) + specular * Material.reflectiveness;\n"
+	"	if (highlight == 1)\n"
+	"		shade = diffuse;\n"
+
+	"	if (Material.translucent == 1 || Material.opacityMap == 1)\n"
+	"	{\n"
+	"		float alpha = 1.0;\n"
+	"		if (Material.translucent == 1)\n"
+	"		{\n"
+	"			float alphaSpec = mix(0.3, 1.0, Material.reflectiveness);\n"
+	"			alphaSpec += specularFact * mix(0.4, 1.0, Material.reflectiveness);\n"
+	"			alphaSpec = clamp(alphaSpec, 0., 1.);\n"
+	"			float alphaTrans = 1. - Material.translucency;\n"
+	"			alpha = clamp(alphaSpec + alphaTrans, 0., 1.);\n"
+	"		}\n"
+	"		if (Material.opacityMap == 1)\n"
+	"			alpha *= texture2D(opacityTex, texCoord).r;\n"
+	"		fragcolor = vec4(shade, alpha);\n"
+	"	}\n"
+	"	else\n"
+	"		fragcolor = vec4(shade, 1.);\n"
+	"	pickcolor = vec4(objectId, elementId, 0.0, 1.0);\n"
 	"}\n"
 };
 
