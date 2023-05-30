@@ -2798,43 +2798,55 @@ void Display()
 		glm::vec3 eyePos = previewer.PreviewCameraPosition();
 		glm::mat4 V = glm::lookAt(eyePos, eyePos + previewer.PreviewCameraDirection(), previewer.PreviewCameraUp());
 		glm::mat4 P = glm::perspective(previewer.CameraFovy(), (float)wRender / (float)hRender, previewer.CameraFocal(), 100.0f);
-		glm::mat4 PV = P * V;
-		glUniformMatrix4fv(0, 1, false, glm::value_ptr(PV));
-		glUniform3fv(2, 1, glm::value_ptr(eyePos));
+		glUniformMatrix4fv(0, 1, false, glm::value_ptr(P));
+		glUniformMatrix4fv(1, 1, false, glm::value_ptr(V));
+		glUniform3fv(3, 1, glm::value_ptr(eyePos));
 
+		const GLenum draw_buffers[] =
+		{
+			GL_COLOR_ATTACHMENT0,
+			GL_COLOR_ATTACHMENT1,
+			GL_COLOR_ATTACHMENT2,
+			GL_COLOR_ATTACHMENT3
+		};
+		glDrawBuffers(4, draw_buffers);
+		float clearColor[] = { previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f };
+		glClearBufferfv(GL_COLOR, 0, clearColor);
+		float black[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		glClearBufferfv(GL_COLOR, 1, black);
+		glClearBufferfv(GL_COLOR, 2, black);
+		glClearBufferfv(GL_COLOR, 3, black);
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		auto& objs = previewer.GetLoadedObjects();
 		for (int pass = 0; pass < 2; pass++)
 		{
-			glUniform1i(7, pass);
-			glDrawBuffer(GL_COLOR_ATTACHMENT0 + pass);
-			if (pass == 0)
-				glClearColor(previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f);
-			else
-				glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			auto& objs = previewer.GetLoadedObjects();
 			for (int i = 0; i < objs.size(); i++)
 			{
-				glUniform1i(8, i + 1);
+				glUniform1i(9, i + 1);
 
-				glUniformMatrix4fv(1, 1, false, glm::value_ptr(objs[i].Mpreview));
+				glUniformMatrix4fv(2, 1, false, glm::value_ptr(objs[i].Mpreview));
 
 				for (int j = 0; j < objs[i].elements.size(); j++)
 				{
-					glUniform1i(9, j + 1);
+					glUniform1i(10, j + 1);
 
+					bool transparent = false;
+					bool highlight = true;
 					glm::vec3 color = objs[i].elements[j].material.diffuse;
 					if (objs[i].elements[j].highlight)
 						color = previewHighlightColor;
 					else if (objs[i].isSelected)
 						color = previewSelectionColor;
+					else
+						highlight = false;
 
-					glUniform1i(10, objs[i].elements[j].highlight || objs[i].isSelected);
+					glUniform1i(11, objs[i].elements[j].highlight || objs[i].isSelected);
 
 					glBindBufferBase(GL_UNIFORM_BUFFER, 0, previewMaterialUBO);
 					GLubyte* blockData = (GLubyte*)glMapBufferRange
 					(
-						GL_UNIFORM_BUFFER, 0, 56,
+						GL_UNIFORM_BUFFER, 0, 68,
 						GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT
 					);
 					glm::vec4 v4 = glm::vec4(color, 1.0f);
@@ -2845,43 +2857,77 @@ void Display()
 					memcpy(blockData + 32, &v, sizeof(float));
 					v = objs[i].elements[j].material.reflectiveness;
 					memcpy(blockData + 36, &v, sizeof(float));
-					int iv = objs[i].elements[j].diffuseTexId != -1;
+					int iv = objs[i].elements[j].material.type == MaterialType::TRANSLUCENT && !highlight;
 					memcpy(blockData + 40, &iv, sizeof(int));
-					iv = objs[i].elements[j].normalTexId != -1;
-					memcpy(blockData + 44, &iv, sizeof(int));
-					iv = objs[i].elements[j].roughnessTexId != -1;
+					v = objs[i].elements[j].material.translucency;
+					memcpy(blockData + 44, &v, sizeof(float));
+					iv = objs[i].elements[j].diffuseTexId != -1;
 					memcpy(blockData + 48, &iv, sizeof(int));
-					iv = objs[i].elements[j].metallicTexId != -1;
+					iv = objs[i].elements[j].normalTexId != -1;
 					memcpy(blockData + 52, &iv, sizeof(int));
+					iv = objs[i].elements[j].roughnessTexId != -1;
+					memcpy(blockData + 56, &iv, sizeof(int));
+					iv = objs[i].elements[j].metallicTexId != -1;
+					memcpy(blockData + 60, &iv, sizeof(int));
+					iv = objs[i].elements[j].opacityTexId != -1;
+					memcpy(blockData + 64, &iv, sizeof(int));
 					glUnmapBuffer(GL_UNIFORM_BUFFER);
 
 					if (objs[i].elements[j].diffuseTexId != -1)
 					{
 						glActiveTexture(GL_TEXTURE0 + 0);
 						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].diffuseTexId);
-						glUniform1i(3, 0);
+						glUniform1i(4, 0);
 					}
 					if (objs[i].elements[j].normalTexId != -1)
 					{
 						glActiveTexture(GL_TEXTURE0 + 1);
 						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].normalTexId);
-						glUniform1i(4, 1);
+						glUniform1i(5, 1);
 					}
 					if (objs[i].elements[j].roughnessTexId != -1)
 					{
 						glActiveTexture(GL_TEXTURE0 + 2);
 						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].roughnessTexId);
-						glUniform1i(5, 2);
+						glUniform1i(6, 2);
 					}
 					if (objs[i].elements[j].metallicTexId != -1)
 					{
 						glActiveTexture(GL_TEXTURE0 + 3);
 						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].metallicTexId);
-						glUniform1i(6, 3);
+						glUniform1i(7, 3);
 					}
+					if (objs[i].elements[j].opacityTexId != -1 && !highlight)
+					{
+						glActiveTexture(GL_TEXTURE0 + 4);
+						glBindTexture(GL_TEXTURE_2D, objs[i].elements[j].opacityTexId);
+						glUniform1i(8, 4);
+						transparent = true;
+					}
+					if (objs[i].elements[j].material.type == MaterialType::TRANSLUCENT)
+						transparent = true;
 
-					glBindVertexArray(objs[i].elements[j].vao);
-					glDrawArrays(GL_TRIANGLES, 0, 3 * objs[i].elements[j].numTriangles);
+					if (pass == 0)
+					{
+						if (!(transparent && !highlight))
+						{
+							glBindVertexArray(objs[i].elements[j].vao);
+							glDrawArrays(GL_TRIANGLES, 0, 3 * objs[i].elements[j].numTriangles);
+						}
+					}
+					else if (pass == 1)
+					{
+						if (transparent && !highlight)
+						{
+							glDepthMask(GL_FALSE);
+							glEnable(GL_BLEND);
+							glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+							glBindVertexArray(objs[i].elements[j].vao);
+							glDrawArrays(GL_TRIANGLES, 0, 3 * objs[i].elements[j].numTriangles);
+							glDisable(GL_BLEND);
+							glDepthMask(GL_TRUE);
+						}
+					}
 				}
 			}
 		}
@@ -3414,7 +3460,7 @@ void InitializeGLFrame()
 		glDeleteBuffers(1, &previewMaterialUBO);
 	glGenBuffers(1, &previewMaterialUBO);
 	glBindBuffer(GL_UNIFORM_BUFFER, previewMaterialUBO);
-	glBufferData(GL_UNIFORM_BUFFER, 56, NULL, GL_DYNAMIC_DRAW);
+	glBufferData(GL_UNIFORM_BUFFER, 68, NULL, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
