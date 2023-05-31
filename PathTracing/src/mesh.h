@@ -71,16 +71,6 @@ struct AABB
 	bool Intersect(const glm::vec3& ro, const glm::vec3& rd);
 };
 
-struct TriangleBarycentricInfo
-{
-	glm::vec3 v0;
-	glm::vec3 v1;
-	float d00 = 0.0f;
-	float d01 = 0.0f;
-	float d11 = 0.0f;
-	float invDenom = 0.0f;
-};
-
 struct Triangle
 {
 	int id = -1;
@@ -100,8 +90,6 @@ struct Triangle
 	glm::vec3 normal;
 	glm::vec3 tangent;
 	glm::vec3 bitangent;
-
-	TriangleBarycentricInfo barycentricInfo;
 
 	bool smoothing = false;
 
@@ -153,14 +141,6 @@ struct GPUTriangle
 	glm::vec2 uv3;                // 8 bytes
 	int objectId = -1;				// 4 bytes
 	int elementId = -1;				// 4 bytes
-
-	glm::vec4 barycentric_v0;     // 16 bytes
-	glm::vec4 barycentric_v1;     // 16 bytes
-
-	float barycentric_d00 = 0.f;   // 4 bytes
-	float barycentric_d01 = 0.f;   // 4 bytes
-	float barycentric_d11 = 0.f;   // 4 bytes
-	float barycentric_invDenom = 0.f;  // 4 bytes
 
 	int smoothing = 0;            // 4 bytes
 	int id = -1;					// 4 bytes

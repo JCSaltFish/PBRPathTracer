@@ -106,10 +106,6 @@ public:
 	PathTracer();
 	~PathTracer();
 
-private:
-	const glm::vec2 GetUV(const glm::vec3& p, const Triangle& t) const;
-	const glm::vec3 GetSmoothNormal(const glm::vec3& p, const Triangle& t) const;
-
 public:
 	void LoadObject(const std::string& file, const glm::mat4& model);
 

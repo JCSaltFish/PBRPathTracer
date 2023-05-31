@@ -157,12 +157,6 @@ void PathTracer::LoadObject(const std::string& file, const glm::mat4& model)
 				tri.uv1 = t.uv1;
 				tri.uv2 = t.uv2;
 				tri.uv3 = t.uv3;
-				tri.barycentric_v0 = glm::vec4(t.barycentricInfo.v0, 1.f);
-				tri.barycentric_v1 = glm::vec4(t.barycentricInfo.v1, 1.f);
-				tri.barycentric_d00 = t.barycentricInfo.d00;
-				tri.barycentric_d01 = t.barycentricInfo.d01;
-				tri.barycentric_d11 = t.barycentricInfo.d11;
-				tri.barycentric_invDenom = t.barycentricInfo.invDenom;
 				tri.smoothing = t.smoothing;
 				tri.id = t.id;
 				tri.objectId = t.objectId;
@@ -350,36 +344,6 @@ const int PathTracer::GetSamples() const
 	return mSamples;
 }
 
-const glm::vec2 PathTracer::GetUV(const glm::vec3& p, const Triangle& t) const
-{
-	glm::vec3 v2 = p - t.v1;
-	float d20 = glm::dot(v2, t.barycentricInfo.v0);
-	float d21 = glm::dot(v2, t.barycentricInfo.v1);
-	
-	float alpha = (t.barycentricInfo.d11 * d20 - t.barycentricInfo.d01 * d21) *
-		t.barycentricInfo.invDenom;
-	float beta = (t.barycentricInfo.d00 * d21 - t.barycentricInfo.d01 * d20) *
-		t.barycentricInfo.invDenom;
-
-	return (1.0f - alpha - beta) * t.uv1 + alpha * t.uv2 + beta * t.uv3;
-}
-
-const glm::vec3 PathTracer::GetSmoothNormal(const glm::vec3& p, const Triangle& t) const
-{
-	glm::vec3 v2 = p - t.v1;
-	float d20 = glm::dot(v2, t.barycentricInfo.v0);
-	float d21 = glm::dot(v2, t.barycentricInfo.v1);
-
-	float alpha = (t.barycentricInfo.d11 * d20 - t.barycentricInfo.d01 * d21) *
-		t.barycentricInfo.invDenom;
-	float beta = (t.barycentricInfo.d00 * d21 - t.barycentricInfo.d01 * d20) *
-		t.barycentricInfo.invDenom;
-
-	glm::vec3 n = (1.0f - alpha - beta) * t.n1 + alpha * t.n2 + beta * t.n3;
-	glm::vec3 res = glm::normalize(glm::vec3(n.x, -n.y, n.z));
-	return glm::normalize(n);
-}
-
 void PathTracer::Exit()
 {
 	mExit = true;
@@ -450,21 +414,6 @@ void PathTracer::GPUBuildScene()
 	glGenTextures(1, &m_GPUTextures);
 	glBindTexture(GL_TEXTURE_2D_ARRAY, m_GPUTextures);
 	glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGB8, maxSize.x, maxSize.y, mTextures.size());
-	GLenum error;
-	while ((error = glGetError()) != GL_NO_ERROR)
-	{
-		GLint totalMemoryKB = 0;
-		glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemoryKB);
-		GLint currentMemoryKB = 0;
-		glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &currentMemoryKB);
-		GLint dedicatedMemoryKB = 0;
-		glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &dedicatedMemoryKB);
-		float totalMemoryMB = static_cast<float>(totalMemoryKB) / 1024.0f;
-		float currentMemoryMB = static_cast<float>(currentMemoryKB) / 1024.0f;
-		float dedicatedMemoryMB = static_cast<float>(dedicatedMemoryKB) / 1024.0f;
-
-		printf("OpenGL Error\n");
-	}
 	for (int i = 0; i < mTextures.size(); i++)
 	{
 		glBindTexture(GL_TEXTURE_2D, mTextures[i]);
