@@ -60,16 +60,6 @@ bool AABB::Intersect(const glm::vec3& ro, const glm::vec3& rd)
 
 void Triangle::Init()
 {
-	// barycentric
-	barycentricInfo.v0 = v2 - v1;
-	barycentricInfo.v1 = v3 - v1;
-	barycentricInfo.d00 = glm::dot(barycentricInfo.v0, barycentricInfo.v0);
-	barycentricInfo.d01 = glm::dot(barycentricInfo.v0, barycentricInfo.v1);
-	barycentricInfo.d11 = glm::dot(barycentricInfo.v1, barycentricInfo.v1);
-	barycentricInfo.invDenom = 1.0f /
-		(barycentricInfo.d00 * barycentricInfo.d11 -
-			barycentricInfo.d01 * barycentricInfo.d01);
-
 	// TBN
 	glm::vec3 e1 = v2 - v1;
 	glm::vec3 e2 = v3 - v1;

@@ -370,21 +370,49 @@ const float PathTracer::Rand()
 	return dis(mRng);
 }
 
-const bool PathTracer::IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b) const
+const glm::vec3 PathTracer::IntersectTriangle
+(
+	const glm::vec3& ro, const glm::vec3& rd,
+	const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2
+) const
 {
-	glm::vec3 ba = b - a;
-	glm::vec3 cp1 = glm::cross(ba, (p1 - a));
-	glm::vec3 cp2 = glm::cross(ba, (p2 - a));
+	glm::vec3 edge1, edge2, h, s, q;
+	float a, f, u, v;
 
-	return (glm::dot(cp1, cp2) >= 0);
+	edge1 = v1 - v0;
+	edge2 = v2 - v0;
+	h = glm::cross(rd, edge2);
+	a = glm::dot(edge1, h);
+
+	if (abs(a) < EPS)
+		return glm::vec3(0.f);
+
+	f = 1.0f / a;
+	s = ro - v0;
+	u = f * glm::dot(s, h);
+
+	if (u < 0.0f || u > 1.0f)
+		return glm::vec3(0.f);
+
+	q = glm::cross(s, edge1);
+	v = f * glm::dot(rd, q);
+
+	if (v < 0.0f || u + v > 1.0f)
+		return glm::vec3(0.f);
+
+	float t = f * glm::dot(edge2, q);
+
+	if (t > EPS)
+		return glm::vec3(t, u, v);
+
+	return glm::vec3(0.f);
 }
 
-const bool PathTracer::IntersectTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) const
-{
-	return (IsSameSide(p, a, b, c) && IsSameSide(p, b, a, c) && IsSameSide(p, c, a, b));
-}
-
-const bool PathTracer::Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& rd, Triangle*& triangleOut, float& distOut)
+const bool PathTracer::Hit
+(
+	BVHNode* node, const glm::vec3& ro, const glm::vec3& rd,
+	Triangle*& triangleOut, float& distOut, glm::vec2& cOut
+)
 {
 	if (node->mLeft && node->mRight)
 	{
@@ -393,19 +421,22 @@ const bool PathTracer::Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& 
 			Triangle* tLeft = 0;
 			Triangle* tRight = 0;
 			float dLeft, dRight;
-			bool hitLeft = Hit(node->mLeft, ro, rd, tLeft, dLeft);
-			bool hitRight = Hit(node->mRight, ro, rd, tRight, dRight);
+			glm::vec2 cLeft, cRight;
+			bool hitLeft = Hit(node->mLeft, ro, rd, tLeft, dLeft, cLeft);
+			bool hitRight = Hit(node->mRight, ro, rd, tRight, dRight, cRight);
 			if (hitLeft && hitRight)
 			{
 				if (dLeft < dRight)
 				{
 					triangleOut = tLeft;
 					distOut = dLeft;
+					cOut = cLeft;
 				}
 				else
 				{
 					triangleOut = tRight;
 					distOut = dRight;
+					cOut = cRight;
 				}
 				return true;
 			}
@@ -413,12 +444,14 @@ const bool PathTracer::Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& 
 			{
 				triangleOut = tLeft;
 				distOut = dLeft;
+				cOut = cLeft;
 				return true;
 			}
 			else if (hitRight)
 			{
 				triangleOut = tRight;
 				distOut = dRight;
+				cOut = cRight;
 				return true;
 			}
 			else
@@ -429,21 +462,15 @@ const bool PathTracer::Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& 
 	}
 	else if (node->mTriangle)
 	{
-		if (glm::dot(rd, node->mTriangle->normal) == 0.0f)
-			return false;
-		distOut = glm::dot((node->mTriangle->v1 - ro), node->mTriangle->normal) / glm::dot(rd, node->mTriangle->normal);
-		if (distOut < 0)
-			return false;
-		// update intersection point
-		glm::vec3 p = ro + rd * distOut;
-
-		if (IntersectTriangle(p, node->mTriangle->v1, node->mTriangle->v2, node->mTriangle->v3))
+		glm::vec3 test = IntersectTriangle(ro, rd, node->mTriangle->v1, node->mTriangle->v2, node->mTriangle->v3);
+		if (test.x > 0.f)
 		{
 			bool result = true;
 			// Opacity
 			if (node->mTriangle->mat->opacityTex)
 			{
-				glm::vec2 uv = GetUV(p, node->mTriangle);
+				glm::vec2 c = glm::vec2(test.y, test.z);
+				glm::vec2 uv = GetUV(c, node->mTriangle);
 				float opacity = node->mTriangle->mat->opacityTex->tex2D(uv).r;
 				result = Rand() < opacity;
 			}
@@ -451,6 +478,8 @@ const bool PathTracer::Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& 
 			if (result)
 			{
 				triangleOut = node->mTriangle;
+				distOut = test.x;
+				cOut = glm::vec2(test.y, test.z);
 				return true;
 			}
 			else
@@ -474,6 +503,8 @@ const glm::vec3 PathTracer::SampleTriangle(const glm::vec3& v0, const glm::vec3&
 
 const glm::vec3 PathTracer::DirectIllumimation(const glm::vec3& rd, const glm::vec3& p, const glm::vec3& n, const glm::vec3& diffuse)
 {
+	if (mLights.size() == 0)
+		return glm::vec3(0.f);
 	// sample a light triangle
 	int lightId = int(floor(Rand() * mLights.size()));
 	if (lightId == mLights.size() && lightId > 0)
@@ -487,7 +518,8 @@ const glm::vec3 PathTracer::DirectIllumimation(const glm::vec3& rd, const glm::v
 		return glm::vec3(0.f);
 	float d = 0.0;
 	Triangle* t = 0;
-	if (Hit(mBvh, p, l, t, d))
+	glm::vec2 c;
+	if (Hit(mBvh, p, l, t, d, c))
 	{
 		if (tLight != t)
 			return glm::vec3(0.f);
@@ -498,32 +530,14 @@ const glm::vec3 PathTracer::DirectIllumimation(const glm::vec3& rd, const glm::v
 	return lColor * diffuse * glm::dot(-n, -l);
 }
 
-const glm::vec2 PathTracer::GetUV(const glm::vec3& p, Triangle* t) const
+const glm::vec2 PathTracer::GetUV(const glm::vec2& c, Triangle* t) const
 {
-	glm::vec3 v2 = p - t->v1;
-	float d20 = glm::dot(v2, t->barycentricInfo.v0);
-	float d21 = glm::dot(v2, t->barycentricInfo.v1);
-	
-	float alpha = (t->barycentricInfo.d11 * d20 - t->barycentricInfo.d01 * d21) *
-		t->barycentricInfo.invDenom;
-	float beta = (t->barycentricInfo.d00 * d21 - t->barycentricInfo.d01 * d20) *
-		t->barycentricInfo.invDenom;
-
-	return (1.0f - alpha - beta) * t->uv1 + alpha * t->uv2 + beta * t->uv3;
+	return (1.0f - c.x - c.y) * t->uv1 + c.x * t->uv2 + c.y * t->uv3;
 }
 
-const glm::vec3 PathTracer::GetSmoothNormal(const glm::vec3& p, Triangle* t) const
+const glm::vec3 PathTracer::GetSmoothNormal(const glm::vec2& c, Triangle* t) const
 {
-	glm::vec3 v2 = p - t->v1;
-	float d20 = glm::dot(v2, t->barycentricInfo.v0);
-	float d21 = glm::dot(v2, t->barycentricInfo.v1);
-
-	float alpha = (t->barycentricInfo.d11 * d20 - t->barycentricInfo.d01 * d21) *
-		t->barycentricInfo.invDenom;
-	float beta = (t->barycentricInfo.d00 * d21 - t->barycentricInfo.d01 * d20) *
-		t->barycentricInfo.invDenom;
-
-	glm::vec3 n = (1.0f - alpha - beta) * t->n1 + alpha * t->n2 + beta * t->n3;
+	glm::vec3 n = (1.0f - c.x - c.y) * t->n1 + c.x * t->n2 + c.y * t->n3;
 	glm::vec3 res = glm::normalize(glm::vec3(n.x, -n.y, n.z));
 	return glm::normalize(n);
 }
@@ -532,14 +546,15 @@ const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int 
 {
 	float d = 0.0f;
 	Triangle* t = 0;
-	if (Hit(mBvh, ro, rd, t, d))
+	glm::vec2 c;
+	if (Hit(mBvh, ro, rd, t, d, c))
 	{
 		Material& mat = mLoadedObjects[t->objectId].elements[t->elementId].material;
 		glm::vec3 p = ro + rd * d;
-		glm::vec2 uv = GetUV(p, t);
+		glm::vec2 uv = GetUV(c, t);
 		glm::vec3 n = t->normal;
 		if (t->smoothing)
-			n = GetSmoothNormal(p, t);
+			n = GetSmoothNormal(c, t);
 		if (mat.normalTex)
 		{
 			glm::mat3 TBN = glm::mat3(t->tangent, t->bitangent, n);
@@ -659,7 +674,6 @@ const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int 
 						refract = true;
 				}
 
-				iter--;
 				if (!refract)
 				{
 					if (roughness == 1.0f)
@@ -684,6 +698,7 @@ const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int 
 						reflectDir = w * cosf(2.0f * M_PI * theta) * u + w * sinf(2.0f * M_PI * theta) * v + sqrtf(1.0f - w * w) * r;
 						reflectDir = glm::normalize(reflectDir);
 					}
+					iter--;
 					return emiss * mat.emissiveIntensity + Trace(p, reflectDir, depth, iter, inside) * mat.specular;
 				}
 				else
@@ -693,6 +708,7 @@ const glm::vec3 PathTracer::Trace(const glm::vec3& ro, const glm::vec3& rd, int 
 						reflectDir = glm::normalize(eta * rd - (eta * glm::dot(n, rd) + sqrtf(k)) * refractN);
 						p -= n * EPS * 2.0f;
 						inside = !inside;
+						iter--;
 						return emiss * mat.emissiveIntensity + Trace(p, reflectDir, depth, iter, inside) * diffuse;
 					}
 					else

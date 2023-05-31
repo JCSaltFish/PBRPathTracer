@@ -71,7 +71,8 @@ ImFont* normalIconFont = 0;
 /* ----- GLFW/IMGUI PARAMS ------ */
 
 /* ----- PATHTRACER/PREVIEWER PARAMS ------ */
-const std::string version = "2.0.0";
+const std::string version = "2.1.0";
+const std::string minFileVersion = "2.0.0";
 
 PathTracer pathTracer;
 int traceDepth = 3;
@@ -199,6 +200,33 @@ void NewScene()
 	}
 }
 
+int CompareVersions(const std::string& version1, const std::string& version2)
+{
+	std::vector<int> v1;
+	std::vector<int> v2;
+
+	std::string token;
+	std::istringstream ss1(version1);
+	while (getline(ss1, token, '.'))
+		v1.push_back(stoi(token));
+
+	std::istringstream ss2(version2);
+	while (getline(ss2, token, '.'))
+		v2.push_back(stoi(token));
+
+	for (size_t i = 0; i < std::max(v1.size(), v2.size()); ++i)
+	{
+		int num1 = (i < v1.size()) ? v1[i] : 0;
+		int num2 = (i < v2.size()) ? v2[i] : 0;
+
+		if (num1 < num2)
+			return -1;
+		else if (num1 > num2)
+			return 1;
+	}
+	return 0;
+}
+
 void GetResolutionFromSceneFile(const std::string& file)
 {
 	std::ifstream fr(file, std::ofstream::in);
@@ -208,7 +236,7 @@ void GetResolutionFromSceneFile(const std::string& file)
 	if (line != "Path Tracer Scene File") { fr.close(); return; }
 	if (!std::getline(fr, line)) { fr.close(); return; }
 	std::string fileVersion = line.substr(line.find_first_of('=') + 1);
-	if (fileVersion != version) { fr.close(); return; }
+	if (CompareVersions(fileVersion, minFileVersion) < 0) { fr.close(); return; }
 	if (fr.eof()) { fr.close(); return; }
 
 	ClearScene();
@@ -239,7 +267,7 @@ void LoadScene(const std::string& file)
 	if (line != "Path Tracer Scene File") { fr.close(); return; }
 	if (!std::getline(fr, line)) { fr.close(); return; }
 	std::string fileVersion = line.substr(line.find_first_of('=') + 1);
-	if (fileVersion != version) { fr.close(); return; }
+	if (CompareVersions(fileVersion, minFileVersion) < 0) { fr.close(); return; }
 	if (fr.eof()) { fr.close(); return; }
 
 	ClearScene();
@@ -422,7 +450,7 @@ void LoadObjectPathsFromSceneFile(const std::string& file)
 	if (line != "Path Tracer Scene File") { fr.close(); return; }
 	if (!std::getline(fr, line)) { fr.close(); return; }
 	std::string fileVersion = line.substr(line.find_first_of('=') + 1);
-	if (fileVersion != version) { fr.close(); return; }
+	if (CompareVersions(fileVersion, minFileVersion) < 0) { fr.close(); return; }
 	if (fr.eof()) { fr.close(); return; }
 
 	ClearScene();
@@ -1493,7 +1521,7 @@ void GuiRightBar()
 		ImGui::Text("Focal Distance");
 		ImGui::SameLine(160);
 		ImGui::SetNextItemWidth(150);
-		if (ImGui::SliderFloat("##focalDist", &fv, 0.f, 5.f, "%.2f",
+		if (ImGui::SliderFloat("##focalDist", &fv, 0.1f, 5.f, "%.2f",
 			ImGuiSliderFlags_AlwaysClamp))
 		{
 			previewer.SetCameraFocalDist(fv);

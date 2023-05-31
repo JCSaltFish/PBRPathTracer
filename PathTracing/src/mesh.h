@@ -9,7 +9,7 @@
 
 #include "image.h"
 
-const float EPS = 0.001f;
+const float EPS = 0.00001f;
 const float INF = (float)0xFFFF;
 
 enum class MaterialType
@@ -68,16 +68,6 @@ struct AABB
 	bool Intersect(const glm::vec3& ro, const glm::vec3& rd);
 };
 
-struct TriangleBarycentricInfo
-{
-	glm::vec3 v0;
-	glm::vec3 v1;
-	float d00 = 0.0f;
-	float d01 = 0.0f;
-	float d11 = 0.0f;
-	float invDenom = 0.0f;
-};
-
 struct Triangle
 {
 	glm::vec3 v1;
@@ -95,8 +85,6 @@ struct Triangle
 	glm::vec3 normal;
 	glm::vec3 tangent;
 	glm::vec3 bitangent;
-
-	TriangleBarycentricInfo barycentricInfo;
 
 	bool smoothing = false;
 

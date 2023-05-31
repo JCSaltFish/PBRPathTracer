@@ -80,13 +80,20 @@ public:
 
 private:
 	const float Rand();
-	const bool IsSameSide(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& a, const glm::vec3& b) const;
-	const bool IntersectTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) const;
-	const bool Hit(BVHNode* node, const glm::vec3& ro, const glm::vec3& rd, Triangle*& triangleOut, float& distOut);
+	const glm::vec3 IntersectTriangle
+	(
+		const glm::vec3& ro, const glm::vec3& rd,
+		const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2
+	) const;
+	const bool Hit
+	(
+		BVHNode* node, const glm::vec3& ro, const glm::vec3& rd,
+		Triangle*& triangleOut, float& distOut, glm::vec2& cOut
+	);
 	const glm::vec3 SampleTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2);
 	const glm::vec3 DirectIllumimation(const glm::vec3& rd, const glm::vec3& p, const glm::vec3& n, const glm::vec3& diffuse);
-	const glm::vec2 GetUV(const glm::vec3& p, Triangle* t) const;
-	const glm::vec3 GetSmoothNormal(const glm::vec3& p, Triangle* t) const;
+	const glm::vec2 GetUV(const glm::vec2& c, Triangle* t) const;
+	const glm::vec3 GetSmoothNormal(const glm::vec2& c, Triangle* t) const;
 	const glm::vec2 SampleCircle();
 	const glm::vec3 Trace(const glm::vec3& ro, const glm::vec3& rd, int depth = 0, int iter = 0, bool inside = false);
 
