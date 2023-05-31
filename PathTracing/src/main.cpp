@@ -2806,16 +2806,12 @@ void Display()
 		{
 			GL_COLOR_ATTACHMENT0,
 			GL_COLOR_ATTACHMENT1,
-			GL_COLOR_ATTACHMENT2,
-			GL_COLOR_ATTACHMENT3
 		};
 		glDrawBuffers(4, draw_buffers);
 		float clearColor[] = { previewBgColor.r, previewBgColor.g, previewBgColor.b, 1.0f };
 		glClearBufferfv(GL_COLOR, 0, clearColor);
 		float black[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		glClearBufferfv(GL_COLOR, 1, black);
-		glClearBufferfv(GL_COLOR, 2, black);
-		glClearBufferfv(GL_COLOR, 3, black);
 		glClear(GL_DEPTH_BUFFER_BIT);
 
 		auto& objs = previewer.GetLoadedObjects();
